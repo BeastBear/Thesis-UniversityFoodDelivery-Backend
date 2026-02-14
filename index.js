@@ -80,8 +80,19 @@ app.use("/api/delivery", deliveryRouter);
 app.use("/api/zone", zoneRouter);
 app.use("/api/settings", settingsRouter);
 socketHandler(io, app);
-server.listen(port, () => {
-  connectDb();
-  logger.info(`Server started on port ${port}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
-});
+const startServer = async () => {
+  try {
+    // 1. เชื่อมต่อ Database ให้ติดก่อน
+    await connectDb();
+
+    // 2. พอ DB ติดแล้ว ค่อยสั่งให้ Server เริ่มรับ Request
+    server.listen(port, () => {
+      logger.info(`Server started on port ${port}`);
+      logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+  } catch (error) {
+    logger.error("Failed to start server:", error);
+  }
+};
+
+startServer();
