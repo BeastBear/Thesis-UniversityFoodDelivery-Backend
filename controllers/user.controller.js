@@ -307,6 +307,12 @@ export const createCreditTopUpSession = async (req, res) => {
     const { amount } = req.body;
     const userId = req.userId;
 
+    const clientUrl =
+      req.headers.origin ||
+      process.env.CLIENT_URL ||
+      process.env.FRONTEND_URL ||
+      "http://localhost:3000";
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -322,8 +328,8 @@ export const createCreditTopUpSession = async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url: `${process.env.CLIENT_URL}/delivery-finance?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.CLIENT_URL}/delivery-finance?payment=cancel`,
+      success_url: `${clientUrl}/delivery-boy-finance?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${clientUrl}/delivery-boy-finance?payment=cancel`,
       metadata: {
         userId,
         type: "topup",
@@ -538,7 +544,8 @@ export const requestPayoutFromWallet = async (req, res) => {
         const isAssigned =
           shopOrder.assignedDeliveryBoy?.toString() === userId.toString() ||
           (typeof shopOrder.assignedDeliveryBoy === "object" &&
-            shopOrder.assignedDeliveryBoy?._id?.toString() === userId.toString());
+            shopOrder.assignedDeliveryBoy?._id?.toString() ===
+              userId.toString());
 
         if (isAssigned && shopOrder.status === "delivered") {
           if (!processedOrderIds.has(order._id.toString())) {
@@ -595,7 +602,8 @@ export const requestPayoutFromWallet = async (req, res) => {
 
     if (existingPendingRequest) {
       return res.status(400).json({
-        message: "You already have a pending payout request. Please wait for it to be processed.",
+        message:
+          "You already have a pending payout request. Please wait for it to be processed.",
       });
     }
 
