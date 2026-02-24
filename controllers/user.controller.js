@@ -304,7 +304,7 @@ export const updateUserLocation = async (req, res) => {
 // Create Credit Top Up Session
 export const createCreditTopUpSession = async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, paymentMethod } = req.body;
     const userId = req.userId;
 
     const clientUrl =
@@ -313,8 +313,13 @@ export const createCreditTopUpSession = async (req, res) => {
       process.env.FRONTEND_URL ||
       "http://localhost:3000";
 
+    const allowedPaymentMethods = ["card", "promptpay"];
+    const selectedMethod = allowedPaymentMethods.includes(paymentMethod)
+      ? paymentMethod
+      : "card";
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      payment_method_types: [selectedMethod],
       line_items: [
         {
           price_data: {
@@ -336,8 +341,9 @@ export const createCreditTopUpSession = async (req, res) => {
       },
     });
 
-    res.status(200).json({ id: session.id });
+    res.status(200).json({ id: session.id, url: session.url });
   } catch (error) {
+    console.error("Stripe Checkout Error in createCreditTopUpSession:", error);
     res
       .status(500)
       .json({ message: `Create top up session error: ${error.message}` });
