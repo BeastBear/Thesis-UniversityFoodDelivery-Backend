@@ -2351,6 +2351,13 @@ export const createPaymentIntent = async (req, res) => {
       }
     }
 
+    // Determine dynamic client URL
+    const clientUrl =
+      req.headers.origin ||
+      process.env.CLIENT_URL ||
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
     // Create Stripe Checkout Session configuration
     const sessionConfig = {
       payment_method_types: paymentMethodTypes,
@@ -2368,10 +2375,9 @@ export const createPaymentIntent = async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url:
-        "http://localhost:5173/order-placed?session_id={CHECKOUT_SESSION_ID}",
+      success_url: `${clientUrl}/order-placed?session_id={CHECKOUT_SESSION_ID}`,
       // Always redirect back to cart page on cancel, handling both new orders and retries there
-      cancel_url: "http://localhost:5173/cart",
+      cancel_url: `${clientUrl}/cart`,
       metadata: {
         orderId: orderId,
         userId: req.userId,
