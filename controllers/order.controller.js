@@ -393,6 +393,7 @@ export const getMyOrders = async (req, res) => {
     } else if (user.role == "owner") {
       const orders = await Order.find({
         "shopOrders.owner": req.userId,
+        payment: true, // Only show PAID or COD orders to restaurants
       })
         .sort({ createdAt: -1 })
         .populate("user", "fullName email mobile")
@@ -402,6 +403,7 @@ export const getMyOrders = async (req, res) => {
     } else if (user.role == "delivery" || user.role == "deliveryBoy") {
       const orders = await Order.find({
         "shopOrders.assignedDeliveryBoy": req.userId,
+        payment: true, // Only show PAID or COD orders to deliverers
       })
         .sort({ createdAt: -1 })
         .populate("user", "fullName email mobile")
@@ -730,7 +732,9 @@ export const getDeliveryBoyAssignment = async (req, res) => {
 
     // Only include orders that are available for delivery boys to accept
     // This includes orders that are accepted, being cooked, prepared, or ready for pickup but NOT yet assigned
+    // MUST BE PAID (or COD, which defaults to true at creation)
     const orders = await Order.find({
+      payment: true,
       shopOrders: {
         $elemMatch: {
           status: {
