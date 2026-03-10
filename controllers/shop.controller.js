@@ -197,7 +197,7 @@ export const getMyShop = async (req, res) => {
           name: restaurant?.name || "Restaurant",
           image: restaurant?.photo || "https://placehold.co/600x400",
           cafeteria: restaurant?.cafeteria || "Cafeteria 1",
-          shopNumber: restaurant?.restaurantNumber || "",
+          shopNumber: restaurant?.restaurantLotNumber || "",
           note: restaurant?.description || "",
           businessHours: defaultBusinessHours,
           isApproved: true,
@@ -223,12 +223,14 @@ export const getMyShop = async (req, res) => {
     if (!shop) {
       return res.status(200).json(null);
     }
-    
+
     // Clear expired closures before returning
     await clearExpiredClosures(shop);
-    
+
     // Calculate wallet balance
-    const settings = await SystemSettings.findOne().select("commissionPercentage").lean();
+    const settings = await SystemSettings.findOne()
+      .select("commissionPercentage")
+      .lean();
     const commissionPercentage = Number(settings?.commissionPercentage ?? 0);
     const gpRate = Number.isFinite(commissionPercentage)
       ? Math.min(Math.max(commissionPercentage, 0), 100) / 100
@@ -249,7 +251,8 @@ export const getMyShop = async (req, res) => {
       if (shopOrder && shopOrder.subtotal) {
         const foodPrice = Number(shopOrder.subtotal) || 0;
         const platformIncome = Math.round(foodPrice * gpRate * 100) / 100;
-        const shopEarnings = Math.round((foodPrice - platformIncome) * 100) / 100;
+        const shopEarnings =
+          Math.round((foodPrice - platformIncome) * 100) / 100;
         totalShopEarnings += shopEarnings;
       }
     });
@@ -260,7 +263,7 @@ export const getMyShop = async (req, res) => {
     // Set this to the date when you switched to the new Stripe sandbox
     // Example: new Date('2024-12-01') for December 1, 2024
     // Set to null to include all payouts regardless of date
-    const newSandboxStartDate = new Date('2024-12-01'); // TODO: Update this to your actual new sandbox start date
+    const newSandboxStartDate = new Date("2024-12-01"); // TODO: Update this to your actual new sandbox start date
     let totalCompletedPayouts = 0;
     if (shop.payouts && Array.isArray(shop.payouts)) {
       shop.payouts.forEach((payout) => {
@@ -269,7 +272,9 @@ export const getMyShop = async (req, res) => {
           if (newSandboxStartDate === null) {
             totalCompletedPayouts += Number(payout.amount) || 0;
           } else {
-            const payoutDate = payout.createdAt ? new Date(payout.createdAt) : new Date(0);
+            const payoutDate = payout.createdAt
+              ? new Date(payout.createdAt)
+              : new Date(0);
             // Only count payouts created after the new sandbox start date
             if (payoutDate >= newSandboxStartDate) {
               totalCompletedPayouts += Number(payout.amount) || 0;
@@ -288,7 +293,9 @@ export const getMyShop = async (req, res) => {
           if (newSandboxStartDate === null) {
             pendingPayouts += Number(payout.amount) || 0;
           } else {
-            const payoutDate = payout.createdAt ? new Date(payout.createdAt) : new Date(0);
+            const payoutDate = payout.createdAt
+              ? new Date(payout.createdAt)
+              : new Date(0);
             // Only count payouts created after the new sandbox start date
             if (payoutDate >= newSandboxStartDate) {
               pendingPayouts += Number(payout.amount) || 0;
@@ -298,8 +305,14 @@ export const getMyShop = async (req, res) => {
       });
     }
 
-    const netWalletBalance = Math.max(0, totalShopEarnings - totalCompletedPayouts);
-    const availableWalletBalance = Math.max(0, netWalletBalance - pendingPayouts);
+    const netWalletBalance = Math.max(
+      0,
+      totalShopEarnings - totalCompletedPayouts,
+    );
+    const availableWalletBalance = Math.max(
+      0,
+      netWalletBalance - pendingPayouts,
+    );
 
     // Add wallet balance to shop object
     const shopData = shop.toObject();
@@ -340,7 +353,9 @@ export const getShopByCity = async (req, res) => {
 
 export const getAllShops = async (req, res) => {
   try {
-    const shops = await Shop.find({ isApproved: true }).populate("items category");
+    const shops = await Shop.find({ isApproved: true }).populate(
+      "items category",
+    );
     if (!shops) {
       return res.status(400).json({ message: "shops not found" });
     }
@@ -1007,9 +1022,11 @@ export const requestPayoutFromWallet = async (req, res) => {
     // Calculate wallet balance according to business rules:
     // Wallet Balance = Sum of all Shop Earnings (from delivered orders) - Sum of all Completed Payouts
     // Shop Earnings = foodPrice - Platform Income = foodPrice * (1 - gpRate)
-    
+
     // Get commission rate
-    const settings = await SystemSettings.findOne().select("commissionPercentage").lean();
+    const settings = await SystemSettings.findOne()
+      .select("commissionPercentage")
+      .lean();
     const commissionPercentage = Number(settings?.commissionPercentage ?? 0);
     const gpRate = Number.isFinite(commissionPercentage)
       ? Math.min(Math.max(commissionPercentage, 0), 100) / 100
@@ -1030,7 +1047,8 @@ export const requestPayoutFromWallet = async (req, res) => {
       if (shopOrder && shopOrder.subtotal) {
         const foodPrice = Number(shopOrder.subtotal) || 0;
         const platformIncome = Math.round(foodPrice * gpRate * 100) / 100;
-        const shopEarnings = Math.round((foodPrice - platformIncome) * 100) / 100;
+        const shopEarnings =
+          Math.round((foodPrice - platformIncome) * 100) / 100;
         totalShopEarnings += shopEarnings;
       }
     });
@@ -1041,7 +1059,7 @@ export const requestPayoutFromWallet = async (req, res) => {
     // Set this to the date when you switched to the new Stripe sandbox
     // Example: new Date('2024-12-01') for December 1, 2024
     // Set to null to include all payouts regardless of date
-    const newSandboxStartDate = new Date('2024-12-01'); // TODO: Update this to your actual new sandbox start date
+    const newSandboxStartDate = new Date("2024-12-01"); // TODO: Update this to your actual new sandbox start date
     let totalCompletedPayouts = 0;
     if (shop.payouts && Array.isArray(shop.payouts)) {
       shop.payouts.forEach((payout) => {
@@ -1050,7 +1068,9 @@ export const requestPayoutFromWallet = async (req, res) => {
           if (newSandboxStartDate === null) {
             totalCompletedPayouts += Number(payout.amount) || 0;
           } else {
-            const payoutDate = payout.createdAt ? new Date(payout.createdAt) : new Date(0);
+            const payoutDate = payout.createdAt
+              ? new Date(payout.createdAt)
+              : new Date(0);
             // Only count payouts created after the new sandbox start date
             if (payoutDate >= newSandboxStartDate) {
               totalCompletedPayouts += Number(payout.amount) || 0;
@@ -1070,7 +1090,9 @@ export const requestPayoutFromWallet = async (req, res) => {
           if (newSandboxStartDate === null) {
             pendingPayouts += Number(payout.amount) || 0;
           } else {
-            const payoutDate = payout.createdAt ? new Date(payout.createdAt) : new Date(0);
+            const payoutDate = payout.createdAt
+              ? new Date(payout.createdAt)
+              : new Date(0);
             // Only count payouts created after the new sandbox start date
             if (payoutDate >= newSandboxStartDate) {
               pendingPayouts += Number(payout.amount) || 0;
@@ -1080,8 +1102,14 @@ export const requestPayoutFromWallet = async (req, res) => {
       });
     }
 
-    const netWalletBalance = Math.max(0, totalShopEarnings - totalCompletedPayouts);
-    const availableWalletBalance = Math.max(0, netWalletBalance - pendingPayouts);
+    const netWalletBalance = Math.max(
+      0,
+      totalShopEarnings - totalCompletedPayouts,
+    );
+    const availableWalletBalance = Math.max(
+      0,
+      netWalletBalance - pendingPayouts,
+    );
 
     // Validate amount doesn't exceed available wallet balance
     if (amount > availableWalletBalance) {
@@ -1098,7 +1126,8 @@ export const requestPayoutFromWallet = async (req, res) => {
 
     if (existingPendingRequest) {
       return res.status(400).json({
-        message: "You already have a pending payout request. Please wait for it to be processed.",
+        message:
+          "You already have a pending payout request. Please wait for it to be processed.",
       });
     }
 

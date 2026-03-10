@@ -66,7 +66,7 @@ const userSchema = new mongoose.Schema(
         name: { type: String, default: "" },
         photo: { type: String, default: "" },
         cafeteria: { type: String, default: "" },
-        restaurantNumber: { type: String, default: "" },
+        restaurantLotNumber: { type: String, default: "" },
         description: { type: String, default: "" },
       },
       bank: {

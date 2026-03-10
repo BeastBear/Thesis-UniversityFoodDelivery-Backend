@@ -570,17 +570,21 @@ export const getFinancialStats = async (req, res) => {
     // 1. Commission on food subtotals (percentage of food value, not including delivery fees)
     // 2. Payment fees (if any - currently 0, but included for future-proofing)
     // Note: Delivery fees go to delivery boys, not the platform
-    
+
     // Sum food subtotals from all shopOrders for commission calculation
     const totalFoodSubtotal = orders.reduce((acc, order) => {
       return (
         acc +
-        order.shopOrders.reduce((soAcc, so) => soAcc + (Number(so.subtotal) || 0), 0)
+        order.shopOrders.reduce(
+          (soAcc, so) => soAcc + (Number(so.subtotal) || 0),
+          0,
+        )
       );
     }, 0);
 
     // Calculate commission revenue
-    const commissionRevenue = Math.round(totalFoodSubtotal * commissionRate * 100) / 100;
+    const commissionRevenue =
+      Math.round(totalFoodSubtotal * commissionRate * 100) / 100;
 
     // Sum payment fees (if any - currently 0 in the system)
     const totalPaymentFees = orders.reduce((acc, order) => {
@@ -588,7 +592,8 @@ export const getFinancialStats = async (req, res) => {
     }, 0);
 
     // Total platform net income = commission + payment fees
-    const totalRevenue = Math.round((commissionRevenue + totalPaymentFees) * 100) / 100;
+    const totalRevenue =
+      Math.round((commissionRevenue + totalPaymentFees) * 100) / 100;
 
     const pendingPayouts = await PayoutRequest.find({ status: "pending" })
       .populate("user", "fullName email mobile role")
@@ -627,7 +632,8 @@ export const processPayoutRequest = async (req, res) => {
 
     if (!["approved", "rejected", "paid"].includes(normalizedStatus)) {
       return res.status(400).json({
-        message: "Invalid status. Must be 'approved', 'rejected', or 'paid' (or 'completed')",
+        message:
+          "Invalid status. Must be 'approved', 'rejected', or 'paid' (or 'completed')",
       });
     }
 
@@ -655,7 +661,8 @@ export const processPayoutRequest = async (req, res) => {
       rejected: "failed",
     };
 
-    const embeddedStatus = embeddedStatusByAdminStatus[normalizedStatus] || null;
+    const embeddedStatus =
+      embeddedStatusByAdminStatus[normalizedStatus] || null;
     const payoutRef = transactionId || payout.transactionId;
 
     if (embeddedStatus && payoutRef) {
@@ -677,7 +684,7 @@ export const processPayoutRequest = async (req, res) => {
     if (normalizedStatus === "paid") {
       try {
         const amountInCents = Math.round(payout.amount * 100); // Convert THB to cents
-        
+
         // Get recipient information based on requester type
         let recipientName = "";
         let metadata = {};
@@ -743,21 +750,21 @@ export const processPayoutRequest = async (req, res) => {
           if (payout.requesterType === "shop" && payout.shop) {
             await Shop.updateOne(
               { _id: payout.shop, "payouts.payoutId": payoutRef },
-              { 
-                $set: { 
+              {
+                $set: {
                   "payouts.$.status": embeddedStatus,
                   "payouts.$.transactionId": stripePayout.id,
-                } 
+                },
               },
             );
           } else {
             await User.updateOne(
               { _id: payout.user, "payouts.payoutId": payoutRef },
-              { 
-                $set: { 
+              {
+                $set: {
                   "payouts.$.status": embeddedStatus,
                   "payouts.$.transactionId": stripePayout.id,
-                } 
+                },
               },
             );
           }
@@ -777,14 +784,14 @@ export const processPayoutRequest = async (req, res) => {
             id: stripePayout.id,
             status: stripePayout.status,
             amount: stripePayout.amount / 100, // Convert back to THB
-            arrivalDate: stripePayout.arrival_date 
-              ? new Date(stripePayout.arrival_date * 1000) 
+            arrivalDate: stripePayout.arrival_date
+              ? new Date(stripePayout.arrival_date * 1000)
               : null,
           },
         });
       } catch (stripeError) {
         console.error("Stripe payout creation error:", stripeError);
-        
+
         // If Stripe payout fails, still update the status but mark it as needing attention
         return res.status(500).json({
           message: `Payout status updated but Stripe payout failed: ${stripeError.message}`,
@@ -893,7 +900,7 @@ export const migrateVerifiedOwnersToShops = async (req, res) => {
           name: restaurant?.name || "Restaurant",
           image: restaurant?.photo || "https://placehold.co/600x400",
           cafeteria: restaurant?.cafeteria || "Cafeteria 1",
-          shopNumber: restaurant?.restaurantNumber || "",
+          shopNumber: restaurant?.restaurantLotNumber || "",
           note: restaurant?.description || "",
           businessHours: defaultBusinessHours,
           isApproved: true,

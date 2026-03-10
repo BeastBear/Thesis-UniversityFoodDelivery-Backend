@@ -64,16 +64,13 @@ export const submitOwnerVerification = async (req, res) => {
       idNumber,
       restaurantName,
       cafeteria,
-      restaurantNumber,
+      restaurantLotNumber,
       restaurantDescription,
-      bankAccountName,
       bankName,
       bankAccountNumber,
     } = req.body;
 
     const normalizedKycName = (fullName || "").trim().toLowerCase();
-    const submittedBankAccountName = (bankAccountName || "").trim();
-    const normalizedBankName = submittedBankAccountName.toLowerCase();
 
     if (!normalizedKycName) {
       return res.status(400).json({ message: "Full Name is required" });
@@ -85,17 +82,14 @@ export const submitOwnerVerification = async (req, res) => {
         .json({ message: "ID Card / Passport Number is required" });
     }
 
-    if (!submittedBankAccountName) {
-      return res
-        .status(400)
-        .json({ message: "Please complete your bank account details first" });
+    if (!bankName || !bankName.trim()) {
+      return res.status(400).json({ message: "Bank name is required" });
     }
 
-    if (normalizedKycName !== normalizedBankName) {
-      return res.status(400).json({
-        message:
-          "Full Name must match Bank Account Name. Please make sure both names are identical.",
-      });
+    if (!bankAccountNumber || !bankAccountNumber.trim()) {
+      return res
+        .status(400)
+        .json({ message: "Bank account number is required" });
     }
 
     const files = req.files || {};
@@ -103,8 +97,12 @@ export const submitOwnerVerification = async (req, res) => {
     const uploadFirst = async (fieldName) => {
       const fileArr = files[fieldName];
       if (!fileArr || !fileArr[0]) return "";
-      const url = await uploadOnCloudinary(fileArr[0].path);
-      return url || "";
+      try {
+        const url = await uploadOnCloudinary(fileArr[0].path);
+        return url || "";
+      } catch (err) {
+        throw new Error(`Failed to upload ${fieldName}`);
+      }
     };
 
     const existingOwnerVerification = user.ownerVerification || {};
@@ -113,10 +111,19 @@ export const submitOwnerVerification = async (req, res) => {
     const existingBookbankHeaderPhoto =
       existingOwnerVerification?.financial?.bookbankHeaderPhoto || "";
 
-    const restaurantPhoto =
-      (await uploadFirst("restaurantPhoto")) || existingRestaurantPhoto;
-    const bookbankHeaderPhoto =
-      (await uploadFirst("bookbankHeaderPhoto")) || existingBookbankHeaderPhoto;
+    let restaurantPhoto = existingRestaurantPhoto;
+    let bookbankHeaderPhoto = existingBookbankHeaderPhoto;
+
+    try {
+      if (files["restaurantPhoto"]) {
+        restaurantPhoto = await uploadFirst("restaurantPhoto");
+      }
+      if (files["bookbankHeaderPhoto"]) {
+        bookbankHeaderPhoto = await uploadFirst("bookbankHeaderPhoto");
+      }
+    } catch (uploadError) {
+      return res.status(400).json({ message: uploadError.message });
+    }
 
     if (!restaurantName) {
       return res.status(400).json({ message: "Restaurant name is required" });
@@ -126,8 +133,10 @@ export const submitOwnerVerification = async (req, res) => {
       return res.status(400).json({ message: "Cafeteria is required" });
     }
 
-    if (!restaurantNumber) {
-      return res.status(400).json({ message: "Restaurant number is required" });
+    if (!restaurantLotNumber) {
+      return res
+        .status(400)
+        .json({ message: "Restaurant Lot. number is required" });
     }
 
     if (!restaurantPhoto) {
@@ -150,11 +159,11 @@ export const submitOwnerVerification = async (req, res) => {
         name: restaurantName || "",
         photo: restaurantPhoto || "",
         cafeteria: cafeteria || "",
-        restaurantNumber: restaurantNumber || "",
+        restaurantLotNumber: restaurantLotNumber || "",
         description: restaurantDescription || "",
       },
       bank: {
-        accountName: submittedBankAccountName || "",
+        accountName: fullName || "", // Use given full name since we removed accountName
         bank: (bankName || "").trim(),
         branch: shop?.ePaymentAccount?.branch || "",
         accountNumber: (bankAccountNumber || "").trim(),
