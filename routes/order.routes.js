@@ -20,11 +20,11 @@ import {
   updatePaymentBySessionId,
   testSessionUpdate,
   placeOrder,
-  sendDeliveryOtp,
+
   updateOrderItems,
   updateOrderStatus,
   updateOrderWithPaymentIntent,
-  verifyDeliveryOtp,
+
   confirmPickup,
   confirmArrivalAtCustomer,
   confirmDelivery,
@@ -40,8 +40,7 @@ orderRouter.post("/place-order", isAuth, placeOrder);
 orderRouter.get("/my-orders", isAuth, getMyOrders);
 orderRouter.get("/get-assignments", isAuth, getDeliveryBoyAssignment);
 orderRouter.get("/get-current-order", isAuth, getCurrentOrder);
-orderRouter.post("/send-delivery-otp", isAuth, sendDeliveryOtp);
-orderRouter.post("/verify-delivery-otp", isAuth, verifyDeliveryOtp);
+
 orderRouter.post("/confirm-pickup", isAuth, confirmPickup);
 orderRouter.post("/confirm-arrival", isAuth, confirmArrivalAtCustomer);
 orderRouter.post("/confirm-delivery", isAuth, confirmDelivery);
