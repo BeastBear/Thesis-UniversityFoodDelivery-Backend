@@ -32,6 +32,7 @@ import {
   getTodayDeliveries,
   getCancellationCount,
   backfillMissingOrderIds,
+  chargeSavedCard,
 } from "../controllers/order.controller.js";
 
 const orderRouter = express.Router();
@@ -64,6 +65,7 @@ orderRouter.get("/test-update-payment", testUpdatePayment);
 
 // Stripe payment routes
 orderRouter.post("/create-payment-intent", isAuth, createPaymentIntent);
+orderRouter.post("/charge-saved-card", isAuth, chargeSavedCard);
 orderRouter.post("/verify-payment", isAuth, verifyPayment);
 orderRouter.post("/stripe-webhook", handleStripeWebhook);
 orderRouter.patch(

@@ -2106,6 +2106,115 @@ export const createPaymentIntent = async (req, res) => {
   }
 };
 
+export const chargeSavedCard = async (req, res) => {
+  try {
+    const { orderId, paymentMethodId } = req.body;
+
+    const systemSettings = await SystemSettings.findOne().select(
+      "isSystemOpen maintenanceMode"
+    );
+    if (systemSettings) {
+      if (
+        systemSettings.maintenanceMode === true ||
+        systemSettings.isSystemOpen === false
+      ) {
+        return res.status(503).json({
+          message:
+            "System is currently closed for maintenance. Please try again later.",
+        });
+      }
+    }
+
+    if (!orderId || !paymentMethodId) {
+      return res.status(400).json({ message: "Order ID and Payment Method ID are required" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.user.toString() !== req.userId) {
+      return res.status(403).json({ message: "Unauthorized access to order" });
+    }
+
+    const enforcedTotal =
+      Math.round(((Number(order.totalAmount) || 0) + 0) * 100) / 100;
+
+    if (!enforcedTotal || enforcedTotal <= 0) {
+      return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    const amountInCents = Math.round(enforcedTotal * 100);
+
+    const User = (await import("../models/user.model.js")).default;
+    const user = await User.findById(req.userId);
+
+    const stripeCustomerId = user.stripeCustomerId;
+    if (!stripeCustomerId) {
+      return res.status(400).json({ message: "User does not have a saved customer profile" });
+    }
+
+    // Determine dynamic client URL
+    const clientUrl =
+      req.headers.origin ||
+      process.env.CLIENT_URL ||
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173";
+
+    // Create PaymentIntent and confirm it immediately
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "thb",
+      customer: stripeCustomerId,
+      payment_method: paymentMethodId,
+      confirm: true,
+      return_url: `${clientUrl}/order-placed?payment=success`,
+      metadata: {
+        orderId: orderId.toString(),
+        userId: req.userId.toString(),
+      },
+    });
+
+    console.log("Stripe PaymentIntent created:", {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+    });
+
+    if (paymentIntent.status === "succeeded") {
+      // Payment went through directly
+      order.payment = true;
+      order.stripePaymentId = paymentIntent.id;
+      await order.save();
+
+      return res.status(200).json({
+        success: true,
+        status: "succeeded",
+        message: "Payment successful",
+      });
+    } else if (paymentIntent.status === "requires_action") {
+      // 3D Secure or other auth needed
+      order.stripePaymentId = paymentIntent.id;
+      await order.save();
+
+      return res.status(200).json({
+        success: true,
+        status: "requires_action",
+        clientSecret: paymentIntent.client_secret,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        status: paymentIntent.status,
+        message: "Payment failed to process normally",
+      });
+    }
+  } catch (error) {
+    console.error("chargeSavedCard error:", error);
+    res.status(500).json({ message: `Failed to charge saved card: ${error.message}` });
+  }
+};
+
 // Verify payment and update order
 export const verifyPayment = async (req, res) => {
   try {
