@@ -2215,6 +2215,76 @@ export const chargeSavedCard = async (req, res) => {
   }
 };
 
+export const createPromptPayIntent = async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    const systemSettings = await SystemSettings.findOne().select(
+      "isSystemOpen maintenanceMode"
+    );
+    if (systemSettings) {
+      if (
+        systemSettings.maintenanceMode === true ||
+        systemSettings.isSystemOpen === false
+      ) {
+        return res.status(503).json({
+          message:
+            "System is currently closed for maintenance. Please try again later.",
+        });
+      }
+    }
+
+    if (!orderId) {
+      return res.status(400).json({ message: "Order ID is required" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.user.toString() !== req.userId) {
+      return res.status(403).json({ message: "Unauthorized access to order" });
+    }
+
+    const enforcedTotal =
+      Math.round(((Number(order.totalAmount) || 0) + 0) * 100) / 100;
+
+    if (!enforcedTotal || enforcedTotal <= 0) {
+      return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    const amountInCents = Math.round(enforcedTotal * 100);
+
+    // Create PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "thb",
+      payment_method_types: ["promptpay"],
+      metadata: {
+        orderId: orderId.toString(),
+        userId: req.userId.toString(),
+      },
+    });
+
+    console.log("Stripe PromptPay Intent created:", {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+    });
+
+    order.stripePaymentId = paymentIntent.id;
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (error) {
+    console.error("createPromptPayIntent error:", error);
+    res.status(500).json({ message: `Failed to create PromptPay intent: ${error.message}` });
+  }
+};
+
 // Verify payment and update order
 export const verifyPayment = async (req, res) => {
   try {
