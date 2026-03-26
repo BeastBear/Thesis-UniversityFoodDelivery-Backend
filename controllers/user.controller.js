@@ -818,6 +818,42 @@ export const deleteSavedAddress = async (req, res) => {
   }
 };
 
+// Create SetupIntent for saving cards
+export const createSetupIntent = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let customerId = user.stripeCustomerId;
+
+    // Create customer if they don't have one (legacy users)
+    if (!customerId) {
+        const newCustomer = await stripe.customers.create({
+          email: user.email,
+          name: user.fullName,
+          metadata: { userId: user._id.toString() },
+        });
+        customerId = newCustomer.id;
+        user.stripeCustomerId = customerId;
+        await user.save();
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+    });
+
+    res.status(200).json({ clientSecret: setupIntent.client_secret });
+  } catch (error) {
+    console.error("SetupIntent creation error:", error);
+    res.status(500).json({ message: `Setup intent creation error: ${error.message}` });
+  }
+};
+
 // Add Saved Card
 export const addSavedCard = async (req, res) => {
   try {
@@ -838,19 +874,42 @@ export const addSavedCard = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Fetch SetupIntent to get PaymentMethod details
+    let paymentMethodDetails = null;
+    try {
+      if (req.body.setupIntentId) {
+        const setupIntent = await stripe.setupIntents.retrieve(req.body.setupIntentId);
+        if (setupIntent.payment_method) {
+          const pm = await stripe.paymentMethods.retrieve(setupIntent.payment_method);
+          if (pm.card) {
+            paymentMethodDetails = {
+              stripePaymentMethodId: pm.id,
+              cardType: pm.card.brand,
+              last4: pm.card.last4,
+              expiry: `${pm.card.exp_month.toString().padStart(2, '0')}/${pm.card.exp_year.toString().slice(-2)}`,
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch SetupIntent details:", err);
+    }
+
     if (isDefault) {
       user.savedCards.forEach((card) => (card.isDefault = false));
     }
 
+    // Merge provided data with Stripe data if available
     user.savedCards.push({
-      cardType,
-      last4,
-      cardNumber,
-      expiry,
-      cvv,
+      cardType: paymentMethodDetails?.cardType || cardType,
+      last4: paymentMethodDetails?.last4 || last4,
+      cardNumber: paymentMethodDetails ? `**** **** **** ${paymentMethodDetails.last4}` : cardNumber,
+      expiry: paymentMethodDetails?.expiry || expiry,
+      cvv: paymentMethodDetails ? "***" : cvv,
       cardholderName,
       nickname,
       isDefault: isDefault || false,
+      stripePaymentMethodId: paymentMethodDetails?.stripePaymentMethodId || null,
     });
 
     await user.save();

@@ -2,6 +2,7 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import genToken from "../utils/token.js";
 import { sendOtpMail } from "../utils/mail.js";
+import stripe from "../config/stripe.js";
 
 export const signUp = async (req, res) => {
   try {
@@ -29,6 +30,20 @@ export const signUp = async (req, res) => {
       mobile,
       password: hashedPassword,
     });
+
+    try {
+      const newCustomer = await stripe.customers.create({
+        email: user.email,
+        name: user.fullName,
+        metadata: {
+          userId: user._id.toString(),
+        },
+      });
+      user.stripeCustomerId = newCustomer.id;
+      await user.save();
+    } catch (err) {
+      console.error("Failed to create Stripe customer during signup:", err);
+    }
 
     // signIn
     const token = await genToken(user._id);
@@ -152,6 +167,20 @@ export const googleAuth = async (req, res) => {
         mobile,
         role,
       });
+
+      try {
+        const newCustomer = await stripe.customers.create({
+          email: user.email,
+          name: user.fullName,
+          metadata: {
+            userId: user._id.toString(),
+          },
+        });
+        user.stripeCustomerId = newCustomer.id;
+        await user.save();
+      } catch (err) {
+        console.error("Failed to create Stripe customer during google auth:", err);
+      }
     }
 
     if (user.isSuspended) {

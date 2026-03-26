@@ -20,6 +20,7 @@ import {
   sendTestNotification,
   getOwnerVerification,
   submitOwnerVerification,
+  createSetupIntent,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import isAuth from "../middlewares/isAuth.js";
@@ -47,6 +48,7 @@ router.put("/update-address/:addressId", isAuth, updateSavedAddress);
 router.delete("/delete-address/:addressId", isAuth, deleteSavedAddress);
 
 // Card Routes
+router.post("/create-setup-intent", isAuth, createSetupIntent);
 router.post("/add-card", isAuth, addSavedCard);
 router.put("/set-default-card/:cardId", isAuth, setDefaultCard);
 router.put("/set-default-payment-method", isAuth, setDefaultPaymentMethod);

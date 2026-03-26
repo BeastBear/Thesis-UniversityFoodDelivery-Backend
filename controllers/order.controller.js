@@ -2014,65 +2014,6 @@ export const createPaymentIntent = async (req, res) => {
       }
     }
 
-    // Sync any local cards to Stripe if they haven't been synced yet
-    // This bridges the gap for cards added via the "Add Card" screen
-    if (stripeCustomerId && user.savedCards && user.savedCards.length > 0) {
-      let cardsUpdated = false;
-      for (const card of user.savedCards) {
-        // Only sync if it has raw number (not masked) and no Stripe ID
-        // Note: Raw numbers usually don't have spaces or asterisks if we cleaned them,
-        // but let's check carefully. The AddCard controller stores them raw.
-        const isRawNumber =
-          card.cardNumber &&
-          !card.cardNumber.includes("*") &&
-          card.cardNumber.length >= 13;
-
-        if (isRawNumber && !card.stripePaymentMethodId) {
-          try {
-            console.log("🔄 Syncing local card to Stripe:", card.last4);
-
-            // Parse expiry
-            const [exp_month_str, exp_year_str] = card.expiry.split("/");
-            const exp_month = parseInt(exp_month_str.trim());
-            let exp_year = parseInt(exp_year_str.trim());
-            if (exp_year < 100) exp_year += 2000;
-
-            // Create Payment Method
-            const paymentMethod = await stripe.paymentMethods.create({
-              type: "card",
-              card: {
-                number: card.cardNumber,
-                exp_month,
-                exp_year,
-                cvc: card.cvv,
-              },
-              billing_details: {
-                name: card.cardholderName || user.fullName,
-                email: user.email,
-              },
-            });
-
-            // Attach to Customer
-            await stripe.paymentMethods.attach(paymentMethod.id, {
-              customer: stripeCustomerId,
-            });
-
-            card.stripePaymentMethodId = paymentMethod.id;
-            cardsUpdated = true;
-            console.log("✅ Card synced successfully:", paymentMethod.id);
-          } catch (syncError) {
-            console.error(
-              `⚠️ Failed to sync card ${card.last4}:`,
-              syncError.message,
-            );
-          }
-        }
-      }
-
-      if (cardsUpdated) {
-        await user.save();
-      }
-    }
 
     // Determine payment method types based on request or default
     // If user explicitly chose 'promptpay' or 'card', we could restrict it,
