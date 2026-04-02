@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import genToken from "../utils/token.js";
 import { sendOtpMail } from "../utils/mail.js";
 import stripe from "../config/stripe.js";
-import { getTokenCookieOptions, getClearCookieOptions } from "../utils/cookieOptions.js";
 
 export const signUp = async (req, res) => {
   try {
@@ -47,8 +46,14 @@ export const signUp = async (req, res) => {
     }
 
     // signIn
+    const isProduction = process.env.NODE_ENV === "production";
     const token = await genToken(user._id);
-    res.cookie("token", token, getTokenCookieOptions());
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     return res.status(201).json({ user, token });
   } catch (error) {
@@ -76,8 +81,14 @@ export const signIn = async (req, res) => {
     }
 
     // signIn
+    const isProduction = process.env.NODE_ENV === "production";
     const token = await genToken(user._id);
-    res.cookie("token", token, getTokenCookieOptions());
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     return res.status(201).json({ user, token });
   } catch (error) {
@@ -87,7 +98,12 @@ export const signIn = async (req, res) => {
 
 export const signOut = async (req, res) => {
   try {
-    res.clearCookie("token", getClearCookieOptions());
+    const isProduction = process.env.NODE_ENV === "production";
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+    });
     return res.status(200).json({ message: "log out successfully" });
   } catch (error) {
     return res.status(500).json(`sign Out error ${error}`);
@@ -181,8 +197,14 @@ export const googleAuth = async (req, res) => {
     }
 
     // signIn
+    const isProduction = process.env.NODE_ENV === "production";
     const token = await genToken(user._id);
-    res.cookie("token", token, getTokenCookieOptions());
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     return res.status(201).json({ user, token });
   } catch (error) {

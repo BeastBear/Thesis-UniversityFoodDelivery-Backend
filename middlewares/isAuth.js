@@ -1,6 +1,14 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import { getClearCookieOptions } from "../utils/cookieOptions.js";
+
+const getClearCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  };
+};
 
 export const isAuth = async (req, res, next) => {
   try {
