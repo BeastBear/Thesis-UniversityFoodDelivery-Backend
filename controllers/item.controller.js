@@ -283,7 +283,10 @@ export const getItemByCity = async (req, res) => {
 export const getItemsByShop = async (req, res) => {
   try {
     const { shopId } = req.params;
-    const shop = await Shop.findById(shopId).populate("category");
+    const shop = await Shop.findById(shopId)
+      .populate("category")
+      .populate("owner", "fullName email mobile role");
+
     if (!shop) {
       return res.status(400).json("shop not found");
     }
