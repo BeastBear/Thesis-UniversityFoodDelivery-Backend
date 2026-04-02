@@ -19,6 +19,10 @@ import {
   createSetupIntent,
   createTopUpPaymentIntent,
   chargeSavedCardTopUp,
+  savePushSubscription,
+  sendTestNotification,
+  getOwnerVerification,
+  submitOwnerVerification,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import isAuth from "../middlewares/isAuth.js";
