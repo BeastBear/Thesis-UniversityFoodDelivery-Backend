@@ -46,12 +46,12 @@ export const signUp = async (req, res) => {
     }
 
     // signIn
-    const isProduction = process.env.NODE_ENV === "production";
+    const isSecure = process.env.COOKIE_SECURE === "true";
     const token = await genToken(user._id);
     res.cookie("token", token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: isSecure,
+      sameSite: isSecure ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -81,12 +81,12 @@ export const signIn = async (req, res) => {
     }
 
     // signIn
-    const isProduction = process.env.NODE_ENV === "production";
+    const isSecure = process.env.COOKIE_SECURE === "true";
     const token = await genToken(user._id);
     res.cookie("token", token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: isSecure,
+      sameSite: isSecure ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -98,11 +98,11 @@ export const signIn = async (req, res) => {
 
 export const signOut = async (req, res) => {
   try {
-    const isProduction = process.env.NODE_ENV === "production";
+    const isSecure = process.env.COOKIE_SECURE === "true";
     res.clearCookie("token", {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: isSecure,
+      sameSite: isSecure ? "none" : "lax",
     });
     return res.status(200).json({ message: "log out successfully" });
   } catch (error) {
@@ -197,12 +197,12 @@ export const googleAuth = async (req, res) => {
     }
 
     // signIn
-    const isProduction = process.env.NODE_ENV === "production";
+    const isSecure = process.env.COOKIE_SECURE === "true";
     const token = await genToken(user._id);
     res.cookie("token", token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? "none" : "lax",
+      secure: isSecure,
+      sameSite: isSecure ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 

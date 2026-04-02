@@ -2,11 +2,11 @@ import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 
 const getClearCookieOptions = () => {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isSecure = process.env.COOKIE_SECURE === "true";
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: isSecure,
+    sameSite: isSecure ? "none" : "lax",
   };
 };
 
