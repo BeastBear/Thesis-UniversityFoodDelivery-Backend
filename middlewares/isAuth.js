@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import { clearTokenCookieOptions } from "../utils/cookieOptions.js";
+import { getClearCookieOptions } from "../utils/cookieOptions.js";
 
 export const isAuth = async (req, res, next) => {
   try {
@@ -15,7 +15,7 @@ export const isAuth = async (req, res, next) => {
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(401).json({ message: "User not found" });
     if (user.isSuspended) {
-      res.clearCookie("token", clearTokenCookieOptions);
+      res.clearCookie("token", getClearCookieOptions());
       return res
         .status(403)
         .json({ message: "Account suspended. Contact support." });
@@ -26,7 +26,7 @@ export const isAuth = async (req, res, next) => {
   } catch (error) {
     console.error("isAuth error:", error.message);
     // Clear any invalid cookies
-    res.clearCookie("token", clearTokenCookieOptions);
+    res.clearCookie("token", getClearCookieOptions());
     return res
       .status(401)
       .json({ message: `invalid or expired token: ${error.message}` });

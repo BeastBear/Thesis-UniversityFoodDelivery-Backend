@@ -1,25 +1,30 @@
 /**
- * Shared cookie options helper.
- * Ensures the exact same attributes are used for both
- * res.cookie() (set) and res.clearCookie() (delete).
- * Browsers will NOT remove a cookie if the attributes differ.
+ * Cookie options helpers — evaluated at REQUEST TIME (not module load time)
+ * so that process.env.NODE_ENV is always available after dotenv.config() runs.
+ *
+ * Browsers will NOT remove a cookie unless clearCookie options match
+ * the options used when the cookie was originally set.
  */
 
-const isProduction = process.env.NODE_ENV === "production";
-
-/** Options used when SETTING the auth token cookie */
-export const tokenCookieOptions = {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? "none" : "lax",
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+/** Options for res.cookie() when setting the auth token */
+export const getTokenCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
 };
 
-/** Options used when CLEARING the auth token cookie (no maxAge) */
-export const clearTokenCookieOptions = {
-  httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? "none" : "lax",
-  path: "/",
+/** Options for res.clearCookie() when removing the auth token */
+export const getClearCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    path: "/",
+  };
 };
