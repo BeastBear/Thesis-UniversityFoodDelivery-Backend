@@ -42,6 +42,7 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
+global.io = io;
 app.set("socketMap", new Map());
 const port = process.env.PORT || 5000;
 app.use(

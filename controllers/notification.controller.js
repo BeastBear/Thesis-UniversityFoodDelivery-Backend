@@ -5,15 +5,21 @@ export const getNotifications = async (req, res) => {
     const userId = req.userId;
     const page = Number(req.query?.page || 1);
     const limit = Number(req.query?.limit || 20);
+    const types = req.query?.types ? req.query.types.split(",") : [];
 
-    const notifications = await Notification.find({ recipient: userId })
+    const query = { recipient: userId };
+    if (types.length > 0) {
+      query.type = { $in: types };
+    }
+
+    const notifications = await Notification.find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
-    const total = await Notification.countDocuments({ recipient: userId });
+    const total = await Notification.countDocuments(query);
     const unreadCount = await Notification.countDocuments({
-      recipient: userId,
+      ...query,
       isRead: false,
     });
 
@@ -84,6 +90,13 @@ export const createNotification = async ({
       relatedModel,
     });
     await notification.save();
+
+    // Emit to personal user room for real-time updates
+    if (global.io) {
+      global.io.to(recipient.toString()).emit("notification", notification);
+      console.log(`Notification sent to user ${recipient} via socket room`);
+    }
+
     return notification;
   } catch (error) {
     console.error("Error creating notification:", error);
@@ -109,19 +122,6 @@ export const createNotificationController = async (req, res) => {
       relatedId,
       relatedModel,
     });
-
-    // Emit socket event for real-time updates
-    const io = req.app.get("io");
-    const socketMap = req.app.get("socketMap");
-
-    if (io && socketMap) {
-      // Find recipient's socket ID
-      const recipientSocketId = socketMap.get(recipient.toString());
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("notification", notification);
-        console.log(`Notification sent to user ${recipient} via socket`);
-      }
-    }
 
     res.status(201).json(notification);
   } catch (error) {
