@@ -310,7 +310,23 @@ export const updateUserLocation = async (req, res) => {
   }
 };
 
-// Create Credit Top Up Session
+// Helper for Top Up Fee Calculation
+const calculateTopUpFee = (amount, method) => {
+  if (method === "promptpay") {
+    // PromptPay: 1.65% + 7% VAT
+    const baseFee = amount * 0.0165;
+    const vat = baseFee * 0.07;
+    return Math.round((baseFee + vat) * 100) / 100;
+  } else if (method === "card") {
+    // Card: 4.75% + 10B + 7% VAT
+    const baseFee = amount * 0.0475 + 10;
+    const vat = baseFee * 0.07;
+    return Math.round((baseFee + vat) * 100) / 100;
+  }
+  return 0;
+};
+
+// Create Credit Top Up Session (Legacy - Redirect to Stripe)
 export const createCreditTopUpSession = async (req, res) => {
   try {
     const { amount, paymentMethod } = req.body;
@@ -336,7 +352,7 @@ export const createCreditTopUpSession = async (req, res) => {
             product_data: {
               name: "Job Credit Top Up",
             },
-            unit_amount: amount * 100,
+            unit_amount: Math.round(amount * 100),
           },
           quantity: 1,
         },
@@ -359,37 +375,134 @@ export const createCreditTopUpSession = async (req, res) => {
   }
 };
 
+// Create Top Up Payment Intent (New - Inline experience)
+export const createTopUpPaymentIntent = async (req, res) => {
+  try {
+    const { amount, paymentMethod } = req.body;
+    const userId = req.userId;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    const fee = calculateTopUpFee(amount, paymentMethod);
+    const totalToPay = Math.round((amount + fee) * 100) / 100;
+    const amountInCents = Math.round(totalToPay * 100);
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "thb",
+      payment_method_types: [paymentMethod === "promptpay" ? "promptpay" : "card"],
+      metadata: {
+        userId: userId.toString(),
+        type: "topup",
+        topUpAmount: amount.toString(),
+        fee: fee.toString(),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      fee,
+      totalToPay,
+    });
+  } catch (error) {
+    console.error("Create top up intent error:", error);
+    res.status(500).json({ message: `Failed to create payment intent: ${error.message}` });
+  }
+};
+
+// Charge Saved Card for Top Up (New - Inline experience)
+export const chargeSavedCardTopUp = async (req, res) => {
+  try {
+    const { amount, paymentMethodId } = req.body;
+    const userId = req.userId;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    const fee = calculateTopUpFee(amount, "card");
+    const totalToPay = Math.round((amount + fee) * 100) / 100;
+    const amountInCents = Math.round(totalToPay * 100);
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "thb",
+      payment_method: paymentMethodId,
+      customer: user.stripeCustomerId,
+      off_session: false,
+      confirm: true,
+      metadata: {
+        userId: userId.toString(),
+        type: "topup",
+        topUpAmount: amount.toString(),
+        fee: fee.toString(),
+      },
+    });
+
+    if (paymentIntent.status === "succeeded") {
+      user.jobCredit += amount;
+      await user.save();
+      return res.status(200).json({ status: "succeeded", newCredit: user.jobCredit });
+    } else if (paymentIntent.status === "requires_action") {
+      return res.status(200).json({
+        status: "requires_action",
+        clientSecret: paymentIntent.client_secret,
+      });
+    } else {
+      return res.status(400).json({ message: `Payment failed with status: ${paymentIntent.status}` });
+    }
+  } catch (error) {
+    console.error("Charge saved card top up error:", error);
+    res.status(500).json({ message: `Card payment failed: ${error.message}` });
+  }
+};
+
 // Verify Credit Top Up
 export const verifyCreditTopUp = async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const { sessionId, paymentIntentId } = req.body;
+    let userId, amount;
 
-    if (session.payment_status === "paid") {
-      const userId = session.metadata.userId;
-      const amount = session.amount_total / 100; // Convert back to main currency unit
+    if (sessionId) {
+      // Logic for legacy Checkout Session
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status === "paid") {
+        userId = session.metadata.userId;
+        amount = session.amount_total / 100;
+      }
+    } else if (paymentIntentId) {
+      // Logic for new inline PaymentIntent
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      if (paymentIntent.status === "succeeded") {
+        userId = paymentIntent.metadata.userId;
+        amount = Number(paymentIntent.metadata.topUpAmount);
+      }
+    }
 
+    if (userId && amount) {
       const user = await User.findById(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Check if this session was already processed (optional but recommended)
-      // For now, we just add credit. In a real app, you should store transaction IDs to prevent double counting.
-
       user.jobCredit += amount;
       await user.save();
 
-      // You might want to emit a socket event here if you have socket instance access
-      // req.io.to(user.socketId).emit('job-credit-updated', { jobCredit: user.jobCredit });
-
-      res
-        .status(200)
-        .json({ message: "Top up successful", jobCredit: user.jobCredit });
+      return res.status(200).json({ message: "Top up successful", newCredit: user.jobCredit });
     } else {
-      res.status(400).json({ message: "Payment not successful" });
+      res.status(400).json({ message: "Payment not successful or verified" });
     }
   } catch (error) {
+    console.error("Verify top up error:", error);
     res.status(500).json({ message: `Verify top up error: ${error.message}` });
   }
 };

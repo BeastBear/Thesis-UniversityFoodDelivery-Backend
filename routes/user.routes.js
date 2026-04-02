@@ -16,11 +16,9 @@ import {
   setDefaultCard,
   setDefaultPaymentMethod,
   updateUserProfile,
-  savePushSubscription,
-  sendTestNotification,
-  getOwnerVerification,
-  submitOwnerVerification,
   createSetupIntent,
+  createTopUpPaymentIntent,
+  chargeSavedCardTopUp,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.js";
 import isAuth from "../middlewares/isAuth.js";
@@ -36,6 +34,8 @@ router.put(
 );
 router.post("/update-location", isAuth, updateUserLocation);
 router.post("/create-credit-topup-session", isAuth, createCreditTopUpSession);
+router.post("/create-topup-payment-intent", isAuth, createTopUpPaymentIntent);
+router.post("/charge-saved-card-topup", isAuth, chargeSavedCardTopUp);
 router.post("/verify-credit-topup", isAuth, verifyCreditTopUp);
 router.post("/update-bank-account", isAuth, updateDeliveryBoyBankAccount);
 router.post("/withdraw-to-bank", isAuth, withdrawToBankDeliveryBoy);
