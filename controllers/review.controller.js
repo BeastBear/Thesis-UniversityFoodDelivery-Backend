@@ -188,126 +188,119 @@ export const submitDeliveryReview = async (req, res) => {
     userId: req.userId,
   });
 
+  const userId = req.userId;
+  const { riderReview, delivererReview, shopReview, shopOrderId } = req.body;
+
+  // 1. Meta-Extraction
+  const activeRiderReview = riderReview || delivererReview;
+  const activeRiderIdStr = activeRiderReview?.riderId || activeRiderReview?.delivererId;
+  
+  let riderReviewCreated = false;
+  let riderReviewAlreadyExisted = false;
+  let shopReviewSubmitted = false;
+
   try {
-    const userId = req.userId;
-    const { riderReview, delivererReview, shopReview, shopOrderId } = req.body;
-
-    // Use either riderReview (old) or delivererReview (new)
-    const activeRiderReview = riderReview || delivererReview;
-    const activeRiderId =
-      activeRiderReview?.riderId || activeRiderReview?.delivererId;
-
-    console.log("📝 [DEBUG] Extraction results:", {
-      activeRiderReview: !!activeRiderReview,
-      activeRiderId,
-      shopReview: !!shopReview,
-      shopOrderId,
-    });
-
-    // 1. Save Rider Review
-    let riderReviewCreated = false;
-    let riderReviewAlreadyExisted = false;
-
+    // 2. Rider Review Logic (Isolated)
     if (activeRiderReview) {
-      if (
-        !activeRiderId ||
-        !mongoose.Types.ObjectId.isValid(String(activeRiderId))
-      ) {
-        console.warn("⚠️ [DEBUG] Invalid or missing riderId/delivererId:", {
-          activeRiderId,
-        });
-      } else if (
-        !shopOrderId ||
-        !mongoose.Types.ObjectId.isValid(String(shopOrderId))
-      ) {
-        console.warn("⚠️ [DEBUG] Invalid or missing shopOrderId for rider:", {
-          shopOrderId,
-        });
-      } else {
-        console.log("🔍 [DEBUG] Checking for existing rider review...");
-        // Check if already exists to prevent duplicates
-        const existingRiderReview = await RiderReview.findOne({
-          shopOrder: shopOrderId,
-          user: userId,
-          rider: activeRiderId,
+      try {
+        console.log("🔍 [DEBUG] Processing Rider Review...");
+        if (!activeRiderIdStr || !mongoose.Types.ObjectId.isValid(String(activeRiderIdStr))) {
+          throw new Error(`Invalid riderId: ${activeRiderIdStr}`);
+        }
+        if (!shopOrderId || !mongoose.Types.ObjectId.isValid(String(shopOrderId))) {
+          throw new Error(`Invalid shopOrderId for rider: ${shopOrderId}`);
+        }
+
+        const riderId = new mongoose.Types.ObjectId(String(activeRiderIdStr));
+        const sOrderId = new mongoose.Types.ObjectId(String(shopOrderId));
+        const uId = new mongoose.Types.ObjectId(String(userId));
+
+        // Check for existing
+        const existing = await RiderReview.findOne({
+          shopOrder: sOrderId,
+          user: uId,
+          rider: riderId,
         });
 
-        if (!existingRiderReview) {
-          console.log("✨ [DEBUG] Creating new rider review...");
-          const newRiderReview = await RiderReview.create({
-            rider: activeRiderId,
-            user: userId,
-            shopOrder: shopOrderId,
-            rating: activeRiderReview.rating || 5,
+        if (!existing) {
+          await RiderReview.create({
+            rider: riderId,
+            user: uId,
+            shopOrder: sOrderId,
+            rating: Number(activeRiderReview.rating) || 5,
             tags: activeRiderReview.tags || [],
             comment: activeRiderReview.comment || "",
-            tipAmount: activeRiderReview.tipAmount || 0,
+            tipAmount: Number(activeRiderReview.tipAmount) || 0,
           });
-          console.log("✅ [DEBUG] Created rider review:", newRiderReview._id);
           riderReviewCreated = true;
+          console.log("✅ [DEBUG] Rider Review Created");
         } else {
           riderReviewAlreadyExisted = true;
-          console.log("ℹ️ [DEBUG] Rider review already exists");
+          console.log("ℹ️ [DEBUG] Rider Review Exists");
         }
+      } catch (riderErr) {
+        console.error("❌ [DEBUG] Rider Review sub-error:", riderErr.message);
+        // We don't throw here to allow Shop Review to proceed if possible
       }
     }
 
-    // 2. Save Shop Review
+    // 3. Shop Review Logic (Isolated)
     if (shopReview && shopReview.shopId) {
-      const { rating, shopId, comment } = shopReview;
+      try {
+        console.log("🔄 [DEBUG] Processing Shop Review...");
+        const { rating, shopId: shopIdStr, comment } = shopReview;
 
-      if (!mongoose.Types.ObjectId.isValid(String(shopId))) {
-        console.warn("⚠️ [DEBUG] Invalid shopId for restaurant review:", {
-          shopId,
-        });
-      } else {
-        console.log("🔄 [DEBUG] Saving shop review for shop:", shopId);
+        if (!mongoose.Types.ObjectId.isValid(String(shopIdStr))) {
+          throw new Error(`Invalid shopId: ${shopIdStr}`);
+        }
+
+        const shopId = new mongoose.Types.ObjectId(String(shopIdStr));
+        const sOrderId = shopOrderId && mongoose.Types.ObjectId.isValid(String(shopOrderId)) 
+          ? new mongoose.Types.ObjectId(String(shopOrderId)) 
+          : null;
+        const uId = new mongoose.Types.ObjectId(String(userId));
+
         await Review.findOneAndUpdate(
-          { shop: shopId, user: userId, shopOrder: shopOrderId },
+          { shop: shopId, user: uId, shopOrder: sOrderId },
           {
-            rating,
+            rating: Number(rating) || 5,
             comment: comment || "",
           },
-          { upsert: true, new: true, setDefaultsOnInsert: true },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
         );
 
-        // Recalculate shop rating
-        const reviews = await Review.find({ shop: shopId });
-        const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
-        const averageRating =
-          reviews.length > 0 ? totalRating / reviews.length : 0;
+        shopReviewSubmitted = true;
 
-        await Shop.findByIdAndUpdate(shopId, {
-          "rating.average": Math.round(averageRating * 10) / 10,
-          "rating.count": reviews.length,
+        // Async rating update (non-blocking for response speed)
+        Review.find({ shop: shopId }).then(reviews => {
+          const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+          const avg = reviews.length > 0 ? totalRating / reviews.length : 0;
+          Shop.findByIdAndUpdate(shopId, {
+            "rating.average": Math.round(avg * 10) / 10,
+            "rating.count": reviews.length,
+          }).catch(e => console.error("Error updating shop rating:", e.message));
         });
-        console.log("📊 [DEBUG] Shop rating recalculated");
+
+        console.log("✅ [DEBUG] Shop Review Processed");
+      } catch (shopErr) {
+        console.error("❌ [DEBUG] Shop Review sub-error:", shopErr.message);
       }
     }
-
-    // Determine what was actually submitted
-    const shopReviewSubmitted = !!(shopReview && shopReview.shopId);
-
-    console.log("🏁 [DEBUG] submitDeliveryReview success result:", {
-      riderReviewCreated,
-      shopReviewSubmitted,
-    });
 
     return res.status(200).json({
       message: "Reviews processed",
-      // Return both sets of names for compatibility
       riderReviewSubmitted: riderReviewCreated,
       delivererReviewSubmitted: riderReviewCreated,
       shopReviewSubmitted,
       riderReviewAlreadyExisted,
       delivererReviewAlreadyExisted,
     });
-  } catch (error) {
-    console.error("❌ [DEBUG] Submit review error:", error);
+
+  } catch (globalErr) {
+    console.error("❌ [DEBUG] Critical Global Review Error:", globalErr);
     return res.status(500).json({
-      message: "Submit review error",
-      details: error.message,
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      message: "Global submit review error",
+      details: globalErr.message,
     });
   }
 };
