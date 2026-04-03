@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Review from "../models/review.model.js";
 import Shop from "../models/shop.model.js";
 import RiderReview from "../models/riderReview.model.js";
@@ -182,6 +183,11 @@ export const updateReview = async (req, res) => {
 
 // Submit combined delivery review (Rider + Shop)
 export const submitDeliveryReview = async (req, res) => {
+  console.log("🚀 [DEBUG] Starting submitDeliveryReview", {
+    body: JSON.stringify(req.body),
+    userId: req.userId,
+  });
+
   try {
     const userId = req.userId;
     const { riderReview, delivererReview, shopReview, shopOrderId } = req.body;
@@ -191,49 +197,58 @@ export const submitDeliveryReview = async (req, res) => {
     const activeRiderId =
       activeRiderReview?.riderId || activeRiderReview?.delivererId;
 
-    console.log("Review submission data:", {
-      userId,
-      activeRiderReview,
-      shopReview,
+    console.log("📝 [DEBUG] Extraction results:", {
+      activeRiderReview: !!activeRiderReview,
+      activeRiderId,
+      shopReview: !!shopReview,
       shopOrderId,
-      riderId: activeRiderId,
-      userReviewing: userId,
     });
 
     // 1. Save Rider Review
     let riderReviewCreated = false;
     let riderReviewAlreadyExisted = false;
 
-    if (activeRiderReview && activeRiderId) {
-      // Check if already exists to prevent duplicates
-      const existingRiderReview = await RiderReview.findOne({
-        shopOrder: shopOrderId,
-        user: userId,
-        rider: activeRiderId,
-      });
-
-      console.log("Existing rider review check:", {
-        shopOrderId,
-        userId,
-        riderId: activeRiderId,
-        found: !!existingRiderReview,
-      });
-
-      if (!existingRiderReview) {
-        const newRiderReview = await RiderReview.create({
-          rider: activeRiderId,
-          user: userId,
-          shopOrder: shopOrderId,
-          rating: activeRiderReview.rating,
-          tags: activeRiderReview.tags || [],
-          comment: activeRiderReview.comment || "",
-          tipAmount: activeRiderReview.tipAmount || 0,
+    if (activeRiderReview) {
+      if (
+        !activeRiderId ||
+        !mongoose.Types.ObjectId.isValid(String(activeRiderId))
+      ) {
+        console.warn("⚠️ [DEBUG] Invalid or missing riderId/delivererId:", {
+          activeRiderId,
         });
-        console.log("Created new rider review:", newRiderReview);
-        riderReviewCreated = true;
+      } else if (
+        !shopOrderId ||
+        !mongoose.Types.ObjectId.isValid(String(shopOrderId))
+      ) {
+        console.warn("⚠️ [DEBUG] Invalid or missing shopOrderId for rider:", {
+          shopOrderId,
+        });
       } else {
-        riderReviewAlreadyExisted = true;
-        console.log("Rider review already exists, skipping creation");
+        console.log("🔍 [DEBUG] Checking for existing rider review...");
+        // Check if already exists to prevent duplicates
+        const existingRiderReview = await RiderReview.findOne({
+          shopOrder: shopOrderId,
+          user: userId,
+          rider: activeRiderId,
+        });
+
+        if (!existingRiderReview) {
+          console.log("✨ [DEBUG] Creating new rider review...");
+          const newRiderReview = await RiderReview.create({
+            rider: activeRiderId,
+            user: userId,
+            shopOrder: shopOrderId,
+            rating: activeRiderReview.rating || 5,
+            tags: activeRiderReview.tags || [],
+            comment: activeRiderReview.comment || "",
+            tipAmount: activeRiderReview.tipAmount || 0,
+          });
+          console.log("✅ [DEBUG] Created rider review:", newRiderReview._id);
+          riderReviewCreated = true;
+        } else {
+          riderReviewAlreadyExisted = true;
+          console.log("ℹ️ [DEBUG] Rider review already exists");
+        }
       }
     }
 
@@ -241,32 +256,45 @@ export const submitDeliveryReview = async (req, res) => {
     if (shopReview && shopReview.shopId) {
       const { rating, shopId, comment } = shopReview;
 
-      await Review.findOneAndUpdate(
-        { shop: shopId, user: userId, shopOrder: shopOrderId },
-        {
-          rating,
-          comment: comment || "",
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
-      );
+      if (!mongoose.Types.ObjectId.isValid(String(shopId))) {
+        console.warn("⚠️ [DEBUG] Invalid shopId for restaurant review:", {
+          shopId,
+        });
+      } else {
+        console.log("🔄 [DEBUG] Saving shop review for shop:", shopId);
+        await Review.findOneAndUpdate(
+          { shop: shopId, user: userId, shopOrder: shopOrderId },
+          {
+            rating,
+            comment: comment || "",
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        );
 
-      // Recalculate shop rating
-      const reviews = await Review.find({ shop: shopId });
-      const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
-      const averageRating =
-        reviews.length > 0 ? totalRating / reviews.length : 0;
+        // Recalculate shop rating
+        const reviews = await Review.find({ shop: shopId });
+        const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+        const averageRating =
+          reviews.length > 0 ? totalRating / reviews.length : 0;
 
-      await Shop.findByIdAndUpdate(shopId, {
-        "rating.average": Math.round(averageRating * 10) / 10,
-        "rating.count": reviews.length,
-      });
+        await Shop.findByIdAndUpdate(shopId, {
+          "rating.average": Math.round(averageRating * 10) / 10,
+          "rating.count": reviews.length,
+        });
+        console.log("📊 [DEBUG] Shop rating recalculated");
+      }
     }
 
     // Determine what was actually submitted
     const shopReviewSubmitted = !!(shopReview && shopReview.shopId);
 
+    console.log("🏁 [DEBUG] submitDeliveryReview success result:", {
+      riderReviewCreated,
+      shopReviewSubmitted,
+    });
+
     return res.status(200).json({
-      message: "Reviews submitted successfully",
+      message: "Reviews processed",
       // Return both sets of names for compatibility
       riderReviewSubmitted: riderReviewCreated,
       delivererReviewSubmitted: riderReviewCreated,
@@ -275,10 +303,12 @@ export const submitDeliveryReview = async (req, res) => {
       delivererReviewAlreadyExisted,
     });
   } catch (error) {
-    console.error("Submit review error:", error);
-    return res
-      .status(500)
-      .json({ message: `Submit review error: ${error.message}` });
+    console.error("❌ [DEBUG] Submit review error:", error);
+    return res.status(500).json({
+      message: "Submit review error",
+      details: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
   }
 };
 
