@@ -48,6 +48,9 @@ export const uploadVerificationDocs = async (req, res) => {
       studentIdNumber = "",
       faculty = "",
       major = "",
+      fullName = "",
+      email = "",
+      mobile = "",
     } = req.body || {};
 
     if (!String(idNumber || "").trim()) {
@@ -76,28 +79,33 @@ export const uploadVerificationDocs = async (req, res) => {
       return res.status(500).json({ message: "File upload failed" });
     }
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        deliveryVerification: {
-          status: "pending",
-          profile: {
-            idNumber: (idNumber || "").trim(),
-          },
-          studentInfo: {
-            studentIdNumber: (studentIdNumber || "").trim(),
-            faculty: (faculty || "").trim(),
-            major: (major || "").trim(),
-          },
-          documents: {
-            studentCard: studentCardUrl,
-          },
-          submittedAt: new Date(),
-          rejectionReason: "", // Clear previous rejection reason if any
+    // Prepare update data
+    const updateData = {
+      deliveryVerification: {
+        status: "pending",
+        profile: {
+          idNumber: (idNumber || "").trim(),
         },
+        studentInfo: {
+          studentIdNumber: (studentIdNumber || "").trim(),
+          faculty: (faculty || "").trim(),
+          major: (major || "").trim(),
+        },
+        documents: {
+          studentCard: studentCardUrl,
+        },
+        submittedAt: new Date(),
+        rejectionReason: "", // Clear previous rejection reason if any
       },
-      { new: true },
-    );
+    };
+
+    // Update basic info if provided
+    if (fullName && fullName.trim()) updateData.fullName = fullName.trim();
+    if (email && email.trim()) updateData.email = email.trim();
+    if (mobile && mobile.trim()) updateData.mobile = mobile.trim();
+
+    const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
+
 
     await Ticket.findOneAndUpdate(
       {
