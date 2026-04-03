@@ -1687,22 +1687,17 @@ export const confirmDelivery = async (req, res) => {
       }
     }
 
-    // Credit rider wallet (delivery fee) - ONLY for online payment methods
-    // COD orders: Rider collects cash from customer, so no wallet credit needed
+    // Credit rider wallet (delivery fee) for ALL payment methods
+    // For COD orders, the rider collects cash, but the platform still credits the wallet to track digital earnings.
     const paymentMethod = String(order.paymentMethod || "").toLowerCase();
-    const isOnlinePayment = ["online", "promptpay", "card"].includes(
-      paymentMethod,
-    );
 
-    if (shopOrder.assignedDeliveryBoy && deliveryFee > 0 && isOnlinePayment) {
+    if (shopOrder.assignedDeliveryBoy && deliveryFee > 0) {
       const deliveryBoyId = shopOrder.assignedDeliveryBoy?._id
         ? shopOrder.assignedDeliveryBoy._id.toString()
         : shopOrder.assignedDeliveryBoy?.toString();
 
       if (deliveryBoyId) {
         // Check if wallet already credited for this order (idempotency)
-        // We'll track this by checking if a payout exists for this order
-        // For now, we'll add a wallet credit entry to user's payouts array
         const deliveryBoy = await User.findById(deliveryBoyId);
         if (deliveryBoy) {
           // Check if already credited (look for payout with this order reference)
@@ -1735,16 +1730,11 @@ export const confirmDelivery = async (req, res) => {
               deliveryBoyId,
               orderId: order._id.toString(),
               deliveryFee,
-              paymentMethod: order.paymentMethod,
+              paymentMethod,
             });
           }
         }
       }
-    } else if (paymentMethod === "cod") {
-      console.log("COD order - wallet not credited (rider collects cash):", {
-        orderId: order._id.toString(),
-        deliveryFee,
-      });
     }
 
     // Mark order as delivered
