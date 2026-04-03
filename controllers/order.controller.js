@@ -392,10 +392,10 @@ export const getMyOrders = async (req, res) => {
           select: "name shopNumber owner",
           populate: {
             path: "owner",
-            select: "mobile phone phoneNumber",
+            select: "mobile phone phoneNumber ownerVerification.owner.mobile",
           },
         })
-        .populate("shopOrders.owner", "mobile phone phoneNumber")
+        .populate("shopOrders.owner", "mobile phone phoneNumber ownerVerification.owner.mobile")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "owner") {
@@ -409,10 +409,10 @@ export const getMyOrders = async (req, res) => {
         select: "name shopNumber owner",
         populate: {
           path: "owner",
-          select: "mobile phone phoneNumber",
+          select: "mobile phone phoneNumber ownerVerification.owner.mobile",
         },
       })
-      .populate("shopOrders.owner", "mobile phone phoneNumber")
+      .populate("shopOrders.owner", "mobile phone phoneNumber ownerVerification.owner.mobile")
       .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "delivery" || user.role == "deliveryBoy") {
@@ -427,10 +427,10 @@ export const getMyOrders = async (req, res) => {
           select: "name shopNumber owner",
           populate: {
             path: "owner",
-            select: "mobile phone phoneNumber",
+            select: "mobile phone phoneNumber ownerVerification.owner.mobile",
           },
         })
-        .populate("shopOrders.owner", "mobile phone phoneNumber")
+        .populate("shopOrders.owner", "mobile phone phoneNumber ownerVerification.owner.mobile")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     }
@@ -1210,8 +1210,8 @@ export const getCurrentOrder = async (req, res) => {
         "shopOrders.shop",
         "name location address cafeteria shopNumber owner",
       )
-      .populate("shopOrders.shop.owner", "fullName mobile phone phoneNumber")
-      .populate("shopOrders.owner", "fullName mobile phone phoneNumber")
+      .populate("shopOrders.shop.owner", "fullName mobile phone phoneNumber ownerVerification.owner.mobile")
+      .populate("shopOrders.owner", "fullName mobile phone phoneNumber ownerVerification.owner.mobile")
       .populate("shopOrders.shopOrderItems.item", "name image price")
       .populate(
         "shopOrders.assignedDeliveryBoy",
@@ -1265,10 +1265,10 @@ export const getOrderById = async (req, res) => {
         select: "name location address shopNumber owner",
         populate: {
           path: "owner",
-          select: "fullName mobile phone phoneNumber",
+          select: "fullName mobile phone phoneNumber ownerVerification.owner.mobile",
         },
       })
-      .populate("shopOrders.owner", "fullName mobile phone phoneNumber")
+      .populate("shopOrders.owner", "fullName mobile phone phoneNumber ownerVerification.owner.mobile")
       .populate("shopOrders.shopOrderItems.item", "name image price")
       .populate(
         "shopOrders.assignedDeliveryBoy",
