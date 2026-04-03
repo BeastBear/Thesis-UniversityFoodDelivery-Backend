@@ -370,13 +370,18 @@ export const updateOrderStatus = async (req, res) => {
     const previousStatus = shopOrder.status;
     shopOrder.status = status;
 
-    // Track preparation time
+    // Track preparation time and delivery success
     if (status === "preparing" && previousStatus !== "preparing") {
       // Order just moved to preparing - record start time
       shopOrder.preparingStartedAt = new Date();
     } else if (status === "out of delivery" && previousStatus === "preparing") {
       // Order moved from preparing to ready for delivery - record completion time
       shopOrder.readyForDeliveryAt = new Date();
+    } else if (status === "delivered" && previousStatus !== "delivered") {
+      // Order moved to delivered - record completion time (safety for manual updates)
+      if (!shopOrder.deliveredAt) {
+        shopOrder.deliveredAt = new Date();
+      }
     }
 
     const io = req.app.get("io");
