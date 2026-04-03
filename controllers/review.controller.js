@@ -184,109 +184,95 @@ export const updateReview = async (req, res) => {
 export const submitDeliveryReview = async (req, res) => {
   try {
     const userId = req.userId;
-    const { riderReview, shopReview, shopOrderId } = req.body;
+    const { riderReview, delivererReview, shopReview, shopOrderId } = req.body;
+
+    // Use either riderReview (old) or delivererReview (new)
+    const activeRiderReview = riderReview || delivererReview;
+    const activeRiderId =
+      activeRiderReview?.riderId || activeRiderReview?.delivererId;
 
     console.log("Review submission data:", {
       userId,
-      riderReview,
+      activeRiderReview,
       shopReview,
       shopOrderId,
-      riderId: riderReview?.riderId,
+      riderId: activeRiderId,
       userReviewing: userId,
     });
 
     // 1. Save Rider Review
     let riderReviewCreated = false;
-    if (riderReview && riderReview.riderId) {
+    let riderReviewAlreadyExisted = false;
+
+    if (activeRiderReview && activeRiderId) {
       // Check if already exists to prevent duplicates
       const existingRiderReview = await RiderReview.findOne({
         shopOrder: shopOrderId,
         user: userId,
-        rider: riderReview.riderId,
+        rider: activeRiderId,
       });
 
       console.log("Existing rider review check:", {
         shopOrderId,
         userId,
-        riderId: riderReview.riderId,
+        riderId: activeRiderId,
         found: !!existingRiderReview,
-        existingReview: existingRiderReview,
-        reviewDetails: existingRiderReview
-          ? {
-              rating: existingRiderReview.rating,
-              createdAt: existingRiderReview.createdAt,
-              comment: existingRiderReview.comment,
-            }
-          : null,
       });
 
       if (!existingRiderReview) {
         const newRiderReview = await RiderReview.create({
-          rider: riderReview.riderId,
+          rider: activeRiderId,
           user: userId,
           shopOrder: shopOrderId,
-          rating: riderReview.rating,
-          tags: riderReview.tags,
-          comment: riderReview.comment,
-          tipAmount: riderReview.tipAmount,
+          rating: activeRiderReview.rating,
+          tags: activeRiderReview.tags || [],
+          comment: activeRiderReview.comment || "",
+          tipAmount: activeRiderReview.tipAmount || 0,
         });
         console.log("Created new rider review:", newRiderReview);
         riderReviewCreated = true;
       } else {
+        riderReviewAlreadyExisted = true;
         console.log("Rider review already exists, skipping creation");
-
-        // Check total review count for this rider to verify it's being counted
-        const totalRiderReviews = await RiderReview.find({
-          rider: riderReview.riderId,
-        });
-        console.log("Total reviews for this rider:", {
-          riderId: riderReview.riderId,
-          totalReviews: totalRiderReviews.length,
-          recentReviews: totalRiderReviews.slice(-3).map((r) => ({
-            rating: r.rating,
-            createdAt: r.createdAt,
-            user: r.user,
-            shopOrder: r.shopOrder,
-          })),
-        });
-      }
-
-      // 2. Save Shop Review
-      if (shopReview && shopReview.shopId) {
-        const { rating, shopId, comment } = shopReview;
-
-        await Review.findOneAndUpdate(
-          { shop: shopId, user: userId, shopOrder: shopOrderId },
-          {
-            rating,
-            comment: comment || "",
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true },
-        );
-
-        // Recalculate shop rating
-        const reviews = await Review.find({ shop: shopId });
-        const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
-        const averageRating =
-          reviews.length > 0 ? totalRating / reviews.length : 0;
-
-        await Shop.findByIdAndUpdate(shopId, {
-          "rating.average": Math.round(averageRating * 10) / 10,
-          "rating.count": reviews.length,
-        });
       }
     }
 
+    // 2. Save Shop Review
+    if (shopReview && shopReview.shopId) {
+      const { rating, shopId, comment } = shopReview;
+
+      await Review.findOneAndUpdate(
+        { shop: shopId, user: userId, shopOrder: shopOrderId },
+        {
+          rating,
+          comment: comment || "",
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+
+      // Recalculate shop rating
+      const reviews = await Review.find({ shop: shopId });
+      const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
+      const averageRating =
+        reviews.length > 0 ? totalRating / reviews.length : 0;
+
+      await Shop.findByIdAndUpdate(shopId, {
+        "rating.average": Math.round(averageRating * 10) / 10,
+        "rating.count": reviews.length,
+      });
+    }
+
     // Determine what was actually submitted
-    const riderReviewSubmitted = riderReviewCreated;
     const shopReviewSubmitted = !!(shopReview && shopReview.shopId);
 
     return res.status(200).json({
       message: "Reviews submitted successfully",
-      riderReviewSubmitted,
+      // Return both sets of names for compatibility
+      riderReviewSubmitted: riderReviewCreated,
+      delivererReviewSubmitted: riderReviewCreated,
       shopReviewSubmitted,
-      riderReviewAlreadyExisted:
-        !!(riderReview && riderReview.riderId) && !riderReviewCreated,
+      riderReviewAlreadyExisted,
+      delivererReviewAlreadyExisted,
     });
   } catch (error) {
     console.error("Submit review error:", error);
