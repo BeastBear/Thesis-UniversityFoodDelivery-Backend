@@ -3,6 +3,7 @@ import Order from "../models/order.model.js";
 import User from "../models/user.model.js";
 import PayoutRequest from "../models/payoutRequest.model.js";
 import SystemSettings from "../models/systemSettings.model.js";
+import { getShopStatus } from "../utils/shopStatus.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { clearExpiredClosures } from "../utils/shopClosure.js";
 import stripe from "../config/stripe.js";
@@ -339,14 +340,17 @@ export const getShopByCity = async (req, res) => {
       cafeteria: city,
       isApproved: true,
     }).populate("items category").populate("owner", "mobile phone phoneNumber");
-    if (!shops) {
-      return res.status(400).json({ message: "shops not found" });
-    }
-    // Clear expired closures for all shops before returning
+    // Clear expired closures for all shops and add status
+    const shopsWithStatus = [];
     for (const shop of shops) {
       await clearExpiredClosures(shop);
+      const shopData = shop.toObject();
+      const status = getShopStatus(shop);
+      shopData.isOpen = status.isOpen;
+      shopData.closeReason = status.reason;
+      shopsWithStatus.push(shopData);
     }
-    return res.status(200).json(shops);
+    return res.status(200).json(shopsWithStatus);
   } catch (error) {
     return res.status(500).json({ message: `get shop by city error ${error}` });
   }
@@ -360,11 +364,17 @@ export const getAllShops = async (req, res) => {
     if (!shops) {
       return res.status(400).json({ message: "shops not found" });
     }
-    // Clear expired closures for all shops before returning
+    // Clear expired closures for all shops and add status
+    const shopsWithStatus = [];
     for (const shop of shops) {
       await clearExpiredClosures(shop);
+      const shopData = shop.toObject();
+      const status = getShopStatus(shop);
+      shopData.isOpen = status.isOpen;
+      shopData.closeReason = status.reason;
+      shopsWithStatus.push(shopData);
     }
-    return res.status(200).json(shops);
+    return res.status(200).json(shopsWithStatus);
   } catch (error) {
     return res.status(500).json({ message: `get all shops error ${error}` });
   }

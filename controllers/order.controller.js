@@ -3,6 +3,8 @@ import Order from "./../models/order.model.js";
 import User from "./../models/user.model.js";
 import Review from "./../models/review.model.js";
 import RiderReview from "./../models/riderReview.model.js";
+import DeliveryAddress from "../models/deliveryAddress.model.js";
+import { getShopStatus } from "../utils/shopStatus.js";
 import mongoose from "mongoose";
 
 import stripe from "../config/stripe.js";
@@ -126,104 +128,6 @@ export const placeOrder = async (req, res) => {
       groupItemsByShop[shopId].push(item);
     });
 
-    // Helper function to check business hours
-    const checkBusinessHours = (businessHours) => {
-      if (
-        !businessHours ||
-        !Array.isArray(businessHours) ||
-        businessHours.length === 0
-      ) {
-        return { isOpen: true };
-      }
-
-      const now = new Date();
-      const dayNames = [
-        "Sunday",
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-      ];
-      const currentDay = dayNames[now.getDay()];
-      const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
-
-      const todayHours = businessHours.find((h) => h && h.day === currentDay);
-      if (!todayHours) return { isOpen: true };
-      if (todayHours.isClosed === true) return { isOpen: false };
-
-      if (
-        todayHours.timeSlots &&
-        Array.isArray(todayHours.timeSlots) &&
-        todayHours.timeSlots.length > 0
-      ) {
-        for (const slot of todayHours.timeSlots) {
-          if (slot.is24Hours) return { isOpen: true };
-          if (!slot.openTime || !slot.closeTime) continue;
-
-          const [openHour, openMin] = slot.openTime.split(":").map(Number);
-          const [closeHour, closeMin] = slot.closeTime.split(":").map(Number);
-          if (
-            isNaN(openHour) ||
-            isNaN(openMin) ||
-            isNaN(closeHour) ||
-            isNaN(closeMin)
-          )
-            continue;
-
-          const openTimeInMinutes = openHour * 60 + openMin;
-          const closeTimeInMinutes = closeHour * 60 + closeMin;
-
-          let isWithinSlot = false;
-          if (closeTimeInMinutes < openTimeInMinutes) {
-            isWithinSlot =
-              currentTimeInMinutes >= openTimeInMinutes ||
-              currentTimeInMinutes <= closeTimeInMinutes;
-          } else {
-            isWithinSlot =
-              currentTimeInMinutes >= openTimeInMinutes &&
-              currentTimeInMinutes < closeTimeInMinutes;
-          }
-
-          if (isWithinSlot) return { isOpen: true };
-        }
-        return { isOpen: false };
-      }
-
-      if (todayHours.openTime && todayHours.closeTime) {
-        const [openHour, openMin] = todayHours.openTime.split(":").map(Number);
-        const [closeHour, closeMin] = todayHours.closeTime
-          .split(":")
-          .map(Number);
-        if (
-          isNaN(openHour) ||
-          isNaN(openMin) ||
-          isNaN(closeHour) ||
-          isNaN(closeMin)
-        ) {
-          return { isOpen: true };
-        }
-
-        const openTimeInMinutes = openHour * 60 + openMin;
-        const closeTimeInMinutes = closeHour * 60 + closeMin;
-
-        let isOpenStatus = false;
-        if (closeTimeInMinutes < openTimeInMinutes) {
-          isOpenStatus =
-            currentTimeInMinutes >= openTimeInMinutes ||
-            currentTimeInMinutes <= closeTimeInMinutes;
-        } else {
-          isOpenStatus =
-            currentTimeInMinutes >= openTimeInMinutes &&
-            currentTimeInMinutes < closeTimeInMinutes;
-        }
-        return { isOpen: isOpenStatus };
-      }
-
-      return { isOpen: true };
-    };
-
     const shopOrders = [];
     for (const shopId of Object.keys(groupItemsByShop)) {
       const shop = await Shop.findById(shopId).populate("owner");
@@ -237,17 +141,11 @@ export const placeOrder = async (req, res) => {
         });
       }
 
-      if (shop.temporaryClosure?.isClosed === true) {
-        return res.status(403).json({
-          message: `Cannot place order. ${shop.name} is temporarily closed.`,
-        });
-      }
-
       // Check if shop is open
-      const shopStatus = checkBusinessHours(shop.businessHours);
-      if (!shopStatus.isOpen) {
+      const status = getShopStatus(shop);
+      if (!status.isOpen) {
         return res.status(400).json({
-          message: `Cannot place order. ${shop.name} is currently closed.`,
+          message: `Cannot place order. ${shop.name} is currently closed. ${status.reason || ""}`,
         });
       }
 
