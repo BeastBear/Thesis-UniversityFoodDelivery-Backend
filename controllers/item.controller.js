@@ -285,7 +285,7 @@ export const getItemsByShop = async (req, res) => {
     const { shopId } = req.params;
     const shop = await Shop.findById(shopId)
       .populate("category")
-      .populate("owner", "fullName email mobile role");
+      .populate("owner", "fullName email mobile phone phoneNumber role");
 
     if (!shop) {
       return res.status(400).json("shop not found");

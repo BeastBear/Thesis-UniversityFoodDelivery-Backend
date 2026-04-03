@@ -387,8 +387,15 @@ export const getMyOrders = async (req, res) => {
     if (user.role == "user") {
       const orders = await Order.find({ user: req.userId })
         .sort({ createdAt: -1 })
-        .populate("shopOrders.shop", "name shopNumber owner")
-        .populate("shopOrders.shop.owner", "mobile")
+        .populate({
+          path: "shopOrders.shop",
+          select: "name shopNumber owner",
+          populate: {
+            path: "owner",
+            select: "mobile phone phoneNumber",
+          },
+        })
+        .populate("shopOrders.owner", "mobile phone phoneNumber")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "owner") {
@@ -396,11 +403,17 @@ export const getMyOrders = async (req, res) => {
         "shopOrders.owner": req.userId,
         payment: true, // Only show PAID or COD orders to restaurants
       })
-        .sort({ createdAt: -1 })
-        .populate("user", "fullName email mobile")
-        .populate("shopOrders.shop", "name shopNumber owner")
-        .populate("shopOrders.shop.owner", "mobile")
-        .populate("shopOrders.shopOrderItems.item", "name image price");
+      .populate("user", "fullName email mobile")
+      .populate({
+        path: "shopOrders.shop",
+        select: "name shopNumber owner",
+        populate: {
+          path: "owner",
+          select: "mobile phone phoneNumber",
+        },
+      })
+      .populate("shopOrders.owner", "mobile phone phoneNumber")
+      .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "delivery" || user.role == "deliveryBoy") {
       const orders = await Order.find({
@@ -409,8 +422,15 @@ export const getMyOrders = async (req, res) => {
       })
         .sort({ createdAt: -1 })
         .populate("user", "fullName email mobile")
-        .populate("shopOrders.shop", "name shopNumber owner")
-        .populate("shopOrders.shop.owner", "mobile")
+        .populate({
+          path: "shopOrders.shop",
+          select: "name shopNumber owner",
+          populate: {
+            path: "owner",
+            select: "mobile phone phoneNumber",
+          },
+        })
+        .populate("shopOrders.owner", "mobile phone phoneNumber")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     }
@@ -1240,8 +1260,15 @@ export const getOrderById = async (req, res) => {
     const { orderId } = req.params;
     console.log("getOrderById called for:", orderId);
     const order = await Order.findById(orderId)
-      .populate("shopOrders.shop", "name location address shopNumber owner")
-      .populate("shopOrders.shop.owner", "mobile phone phoneNumber")
+      .populate({
+        path: "shopOrders.shop",
+        select: "name location address shopNumber owner",
+        populate: {
+          path: "owner",
+          select: "fullName mobile phone phoneNumber",
+        },
+      })
+      .populate("shopOrders.owner", "fullName mobile phone phoneNumber")
       .populate("shopOrders.shopOrderItems.item", "name image price")
       .populate(
         "shopOrders.assignedDeliveryBoy",
