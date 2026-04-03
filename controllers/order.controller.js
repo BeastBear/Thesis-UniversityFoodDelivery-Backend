@@ -3,7 +3,6 @@ import Order from "./../models/order.model.js";
 import User from "./../models/user.model.js";
 import Review from "./../models/review.model.js";
 import RiderReview from "./../models/riderReview.model.js";
-import DeliveryAddress from "../models/deliveryAddress.model.js";
 import { getShopStatus } from "../utils/shopStatus.js";
 import mongoose from "mongoose";
 
