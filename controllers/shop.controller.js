@@ -34,6 +34,7 @@ export const getShopById = async (req, res) => {
     // Clear expired closures before returning
     await clearExpiredClosures(shop);
     await shop.populate("category");
+    await shop.populate("owner", "mobile phone phoneNumber");
     return res.status(200).json(shop);
   } catch (error) {
     return res.status(500).json({ message: `get shop error ${error}` });
@@ -337,7 +338,7 @@ export const getShopByCity = async (req, res) => {
     const shops = await Shop.find({
       cafeteria: city,
       isApproved: true,
-    }).populate("items category");
+    }).populate("items category").populate("owner", "mobile phone phoneNumber");
     if (!shops) {
       return res.status(400).json({ message: "shops not found" });
     }
@@ -355,7 +356,7 @@ export const getAllShops = async (req, res) => {
   try {
     const shops = await Shop.find({ isApproved: true }).populate(
       "items category",
-    );
+    ).populate("owner", "mobile phone phoneNumber");
     if (!shops) {
       return res.status(400).json({ message: "shops not found" });
     }

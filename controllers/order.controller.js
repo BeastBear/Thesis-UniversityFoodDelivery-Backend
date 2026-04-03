@@ -387,7 +387,8 @@ export const getMyOrders = async (req, res) => {
     if (user.role == "user") {
       const orders = await Order.find({ user: req.userId })
         .sort({ createdAt: -1 })
-        .populate("shopOrders.shop", "name")
+        .populate("shopOrders.shop", "name shopNumber owner")
+        .populate("shopOrders.shop.owner", "mobile")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "owner") {
@@ -397,7 +398,8 @@ export const getMyOrders = async (req, res) => {
       })
         .sort({ createdAt: -1 })
         .populate("user", "fullName email mobile")
-        .populate("shopOrders.shop", "name")
+        .populate("shopOrders.shop", "name shopNumber owner")
+        .populate("shopOrders.shop.owner", "mobile")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     } else if (user.role == "delivery" || user.role == "deliveryBoy") {
@@ -407,7 +409,8 @@ export const getMyOrders = async (req, res) => {
       })
         .sort({ createdAt: -1 })
         .populate("user", "fullName email mobile")
-        .populate("shopOrders.shop", "name")
+        .populate("shopOrders.shop", "name shopNumber owner")
+        .populate("shopOrders.shop.owner", "mobile")
         .populate("shopOrders.shopOrderItems.item", "name image price");
       return res.status(200).json(orders);
     }
@@ -1237,7 +1240,8 @@ export const getOrderById = async (req, res) => {
     const { orderId } = req.params;
     console.log("getOrderById called for:", orderId);
     const order = await Order.findById(orderId)
-      .populate("shopOrders.shop", "name location address shopNumber")
+      .populate("shopOrders.shop", "name location address shopNumber owner")
+      .populate("shopOrders.shop.owner", "mobile phone phoneNumber")
       .populate("shopOrders.shopOrderItems.item", "name image price")
       .populate(
         "shopOrders.assignedDeliveryBoy",
