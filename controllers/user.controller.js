@@ -449,6 +449,11 @@ export const chargeSavedCardTopUp = async (req, res) => {
     });
 
     if (paymentIntent.status === "succeeded") {
+      console.log("[chargeSavedCardTopUp] Payment succeeded, updating credit:", {
+        userId,
+        amount,
+        paymentIntentId: paymentIntent.id,
+      });
       const updatedUser = await User.findOneAndUpdate(
         { _id: userId, processedTopUps: { $ne: paymentIntent.id } },
         { 
@@ -457,6 +462,8 @@ export const chargeSavedCardTopUp = async (req, res) => {
         },
         { new: true }
       );
+      
+      console.log("[chargeSavedCardTopUp] findOneAndUpdate result:", updatedUser ? `newCredit=${updatedUser.jobCredit}` : "NULL (already processed or not found)");
       
       let newCredit = user.jobCredit;
       if (updatedUser) {
@@ -488,6 +495,8 @@ export const verifyCreditTopUp = async (req, res) => {
     const paymentId = paymentIntentId || sessionId;
     let userId, amount;
 
+    console.log("[verifyCreditTopUp] Called with:", { sessionId, paymentIntentId, paymentId });
+
     if (sessionId) {
       // Logic for legacy Checkout Session
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -498,15 +507,19 @@ export const verifyCreditTopUp = async (req, res) => {
     } else if (paymentIntentId) {
       // Logic for new inline PaymentIntent
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      console.log("[verifyCreditTopUp] PaymentIntent status:", paymentIntent.status, "metadata:", paymentIntent.metadata);
       if (paymentIntent.status === "succeeded") {
         userId = paymentIntent.metadata.userId;
         amount = Number(paymentIntent.metadata.topUpAmount);
       }
     }
 
+    console.log("[verifyCreditTopUp] Resolved userId:", userId, "amount:", amount);
+
     if (userId && amount) {
       if (paymentId) {
         // Atomic update with idempotency check
+        console.log("[verifyCreditTopUp] Running findOneAndUpdate...");
         const updatedUser = await User.findOneAndUpdate(
           { _id: userId, processedTopUps: { $ne: paymentId } },
           { 
@@ -516,10 +529,13 @@ export const verifyCreditTopUp = async (req, res) => {
           { new: true }
         );
 
+        console.log("[verifyCreditTopUp] findOneAndUpdate result:", updatedUser ? `newCredit=${updatedUser.jobCredit}` : "NULL");
+
         if (!updatedUser) {
           // It either means user doesn't exist, OR the paymentId is already in processedTopUps.
           // Check if user exists to be sure:
           const existing = await User.findById(userId);
+          console.log("[verifyCreditTopUp] Existing user:", existing ? `credit=${existing.jobCredit} processedTopUps=${JSON.stringify(existing.processedTopUps)}` : "NOT FOUND");
           if (existing && existing.processedTopUps && existing.processedTopUps.includes(paymentId)) {
             return res.status(200).json({ message: "Top up already verified", newCredit: existing.jobCredit });
           } else if (!existing) {
@@ -539,6 +555,7 @@ export const verifyCreditTopUp = async (req, res) => {
         return res.status(200).json({ message: "Top up successful", newCredit: user.jobCredit });
       }
     } else {
+      console.log("[verifyCreditTopUp] FAILED - userId or amount is falsy:", { userId, amount });
       res.status(400).json({ message: "Payment not successful or verified" });
     }
   } catch (error) {
