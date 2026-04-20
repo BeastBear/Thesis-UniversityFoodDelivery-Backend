@@ -416,9 +416,11 @@ export const createTopUpPaymentIntent = async (req, res) => {
 
 // Charge Saved Card for Top Up (New - Inline experience)
 export const chargeSavedCardTopUp = async (req, res) => {
+  console.log("=== [chargeSavedCardTopUp] START ===");
   try {
     const { amount, paymentMethodId } = req.body;
     const userId = req.userId;
+    console.log("[chargeSavedCardTopUp] userId:", userId, "amount:", amount);
 
     const user = await User.findById(userId);
     if (!user) {
@@ -432,6 +434,8 @@ export const chargeSavedCardTopUp = async (req, res) => {
     const fee = calculateTopUpFee(amount, "card");
     const totalToPay = Math.round((amount + fee) * 100) / 100;
     const amountInCents = Math.round(totalToPay * 100);
+
+    console.log("[chargeSavedCardTopUp] Creating PaymentIntent:", { amountInCents, fee, totalToPay });
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
@@ -448,32 +452,32 @@ export const chargeSavedCardTopUp = async (req, res) => {
       },
     });
 
+    console.log("[chargeSavedCardTopUp] PI created:", paymentIntent.id, "status:", paymentIntent.status);
+
     if (paymentIntent.status === "succeeded") {
-      console.log("[chargeSavedCardTopUp] Payment succeeded, updating credit:", {
-        userId,
-        amount,
-        paymentIntentId: paymentIntent.id,
-      });
-      const updatedUser = await User.findOneAndUpdate(
-        { _id: userId, processedTopUps: { $ne: paymentIntent.id } },
-        { 
-          $inc: { jobCredit: Math.max(0, amount) },
-          $push: { processedTopUps: paymentIntent.id }
-        },
-        { new: true }
-      );
-      
-      console.log("[chargeSavedCardTopUp] findOneAndUpdate result:", updatedUser ? `newCredit=${updatedUser.jobCredit}` : "NULL (already processed or not found)");
-      
-      let newCredit = user.jobCredit;
-      if (updatedUser) {
-        newCredit = updatedUser.jobCredit;
-      } else {
-        const existing = await User.findById(userId);
-        if (existing) newCredit = existing.jobCredit;
+      // Check idempotency
+      const userBefore = await User.findById(userId).select("jobCredit processedTopUps");
+      console.log("[chargeSavedCardTopUp] User BEFORE:", `credit=${userBefore?.jobCredit}`);
+
+      if (userBefore?.processedTopUps?.includes(paymentIntent.id)) {
+        console.log("[chargeSavedCardTopUp] Already processed!");
+        return res.status(200).json({ status: "succeeded", newCredit: userBefore.jobCredit });
       }
 
-      return res.status(200).json({ status: "succeeded", newCredit });
+      // Direct update
+      const updateResult = await User.updateOne(
+        { _id: userId },
+        { 
+          $inc: { jobCredit: amount },
+          $push: { processedTopUps: paymentIntent.id }
+        }
+      );
+      console.log("[chargeSavedCardTopUp] updateOne result:", JSON.stringify(updateResult));
+
+      const userAfter = await User.findById(userId).select("jobCredit");
+      console.log("[chargeSavedCardTopUp] User AFTER:", `credit=${userAfter?.jobCredit}`);
+
+      return res.status(200).json({ status: "succeeded", newCredit: userAfter?.jobCredit || (user.jobCredit + amount) });
     } else if (paymentIntent.status === "requires_action") {
       return res.status(200).json({
         status: "requires_action",
@@ -483,83 +487,82 @@ export const chargeSavedCardTopUp = async (req, res) => {
       return res.status(400).json({ message: `Payment failed with status: ${paymentIntent.status}` });
     }
   } catch (error) {
-    console.error("Charge saved card top up error:", error);
+    console.error("[chargeSavedCardTopUp] ERROR:", error.message, error.stack);
     res.status(500).json({ message: `Card payment failed: ${error.message}` });
   }
 };
 
 // Verify Credit Top Up
 export const verifyCreditTopUp = async (req, res) => {
+  console.log("=== [verifyCreditTopUp] START ===");
+  console.log("[verifyCreditTopUp] req.body:", JSON.stringify(req.body));
   try {
     const { sessionId, paymentIntentId } = req.body;
     const paymentId = paymentIntentId || sessionId;
     let userId, amount;
 
-    console.log("[verifyCreditTopUp] Called with:", { sessionId, paymentIntentId, paymentId });
+    if (!paymentId) {
+      console.log("[verifyCreditTopUp] No paymentId provided!");
+      return res.status(400).json({ message: "No payment ID provided" });
+    }
 
     if (sessionId) {
-      // Logic for legacy Checkout Session
       const session = await stripe.checkout.sessions.retrieve(sessionId);
+      console.log("[verifyCreditTopUp] Session status:", session.payment_status);
       if (session.payment_status === "paid") {
         userId = session.metadata.userId;
         amount = session.amount_total / 100;
       }
     } else if (paymentIntentId) {
-      // Logic for new inline PaymentIntent
+      console.log("[verifyCreditTopUp] Retrieving PaymentIntent:", paymentIntentId);
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-      console.log("[verifyCreditTopUp] PaymentIntent status:", paymentIntent.status, "metadata:", paymentIntent.metadata);
+      console.log("[verifyCreditTopUp] PI status:", paymentIntent.status, "metadata:", JSON.stringify(paymentIntent.metadata));
       if (paymentIntent.status === "succeeded") {
         userId = paymentIntent.metadata.userId;
         amount = Number(paymentIntent.metadata.topUpAmount);
-      }
-    }
-
-    console.log("[verifyCreditTopUp] Resolved userId:", userId, "amount:", amount);
-
-    if (userId && amount) {
-      if (paymentId) {
-        // Atomic update with idempotency check
-        console.log("[verifyCreditTopUp] Running findOneAndUpdate...");
-        const updatedUser = await User.findOneAndUpdate(
-          { _id: userId, processedTopUps: { $ne: paymentId } },
-          { 
-            $inc: { jobCredit: Math.max(0, amount) },
-            $push: { processedTopUps: paymentId }
-          },
-          { new: true }
-        );
-
-        console.log("[verifyCreditTopUp] findOneAndUpdate result:", updatedUser ? `newCredit=${updatedUser.jobCredit}` : "NULL");
-
-        if (!updatedUser) {
-          // It either means user doesn't exist, OR the paymentId is already in processedTopUps.
-          // Check if user exists to be sure:
-          const existing = await User.findById(userId);
-          console.log("[verifyCreditTopUp] Existing user:", existing ? `credit=${existing.jobCredit} processedTopUps=${JSON.stringify(existing.processedTopUps)}` : "NOT FOUND");
-          if (existing && existing.processedTopUps && existing.processedTopUps.includes(paymentId)) {
-            return res.status(200).json({ message: "Top up already verified", newCredit: existing.jobCredit });
-          } else if (!existing) {
-             return res.status(404).json({ message: "User not found" });
-          } else {
-             // Shouldn't happen unless race condition where another request just processed it.
-             return res.status(200).json({ message: "Top up already verified", newCredit: existing.jobCredit });
-          }
-        }
-        return res.status(200).json({ message: "Top up successful", newCredit: updatedUser.jobCredit });
       } else {
-        // Fallback for legacy (no paymentId provided, shouldn't occur normally)
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "User not found" });
-        user.jobCredit += amount;
-        await user.save();
-        return res.status(200).json({ message: "Top up successful", newCredit: user.jobCredit });
+        console.log("[verifyCreditTopUp] PI status is NOT succeeded:", paymentIntent.status);
       }
-    } else {
-      console.log("[verifyCreditTopUp] FAILED - userId or amount is falsy:", { userId, amount });
-      res.status(400).json({ message: "Payment not successful or verified" });
     }
+
+    console.log("[verifyCreditTopUp] userId:", userId, "amount:", amount, "paymentId:", paymentId);
+
+    if (!userId || !amount || amount <= 0) {
+      console.log("[verifyCreditTopUp] ABORT - invalid userId or amount");
+      return res.status(400).json({ message: "Payment not successful or verified" });
+    }
+
+    // First check the user exists and current state
+    const userBefore = await User.findById(userId).select("jobCredit processedTopUps");
+    console.log("[verifyCreditTopUp] User BEFORE update:", userBefore ? `credit=${userBefore.jobCredit}, processedTopUps=${JSON.stringify(userBefore.processedTopUps)}` : "NOT FOUND");
+
+    if (!userBefore) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check idempotency
+    if (userBefore.processedTopUps && userBefore.processedTopUps.includes(paymentId)) {
+      console.log("[verifyCreditTopUp] Already processed! Returning existing credit.");
+      return res.status(200).json({ message: "Top up already verified", newCredit: userBefore.jobCredit });
+    }
+
+    // Direct update using updateOne for maximum reliability
+    const updateResult = await User.updateOne(
+      { _id: userId },
+      { 
+        $inc: { jobCredit: amount },
+        $push: { processedTopUps: paymentId }
+      }
+    );
+    console.log("[verifyCreditTopUp] updateOne result:", JSON.stringify(updateResult));
+
+    // Re-read to get new value
+    const userAfter = await User.findById(userId).select("jobCredit");
+    console.log("[verifyCreditTopUp] User AFTER update: credit=", userAfter?.jobCredit);
+
+    return res.status(200).json({ message: "Top up successful", newCredit: userAfter?.jobCredit || (userBefore.jobCredit + amount) });
   } catch (error) {
-    console.error("Verify top up error:", error);
+    console.error("[verifyCreditTopUp] ERROR:", error.message, error.stack);
     res.status(500).json({ message: `Verify top up error: ${error.message}` });
   }
 };
