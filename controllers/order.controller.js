@@ -2727,32 +2727,33 @@ export const handleStripeWebhook = async (req, res) => {
           const userId = paymentIntent.metadata.userId;
           const topUpAmount = parseFloat(paymentIntent.metadata.topUpAmount);
 
-          const user = await User.findById(userId);
-          if (user) {
-            if (user.processedTopUps && user.processedTopUps.includes(paymentIntent.id)) {
-              console.log("Top-up already processed via webhook:", paymentIntent.id);
-            } else {
-              user.jobCredit += topUpAmount;
-              if (!user.processedTopUps) user.processedTopUps = [];
-              user.processedTopUps.push(paymentIntent.id);
-              await user.save();
+          const updatedUser = await User.findOneAndUpdate(
+            { _id: userId, processedTopUps: { $ne: paymentIntent.id } },
+            { 
+              $inc: { jobCredit: Math.max(0, topUpAmount) },
+              $push: { processedTopUps: paymentIntent.id }
+            },
+            { new: true }
+          );
 
-              console.log("Credit top-up completed via webhook:", {
-                userId: userId,
-                paymentIntentId: paymentIntent.id,
-                topUpAmount: topUpAmount,
-                newCredit: user.jobCredit,
-              });
+          if (updatedUser) {
+            console.log("Credit top-up completed via webhook:", {
+              userId: userId,
+              paymentIntentId: paymentIntent.id,
+              topUpAmount: topUpAmount,
+              newCredit: updatedUser.jobCredit,
+            });
 
-              const io = req.app.get("io");
-              const socketMap = req.app.get("socketMap");
-              if (io) {
-                const userSocketId = socketMap?.get(userId?.toString()) || user?.socketId;
-                if (userSocketId) {
-                  io.to(userSocketId).emit("job-credit-updated", { jobCredit: user.jobCredit });
-                }
+            const io = req.app.get("io");
+            const socketMap = req.app.get("socketMap");
+            if (io) {
+              const userSocketId = socketMap?.get(userId?.toString()) || updatedUser?.socketId;
+              if (userSocketId) {
+                io.to(userSocketId).emit("job-credit-updated", { jobCredit: updatedUser.jobCredit });
               }
             }
+          } else {
+            console.log("Top-up already processed via webhook or user not found:", paymentIntent.id);
           }
         } catch (error) {
           console.error("Error processing topup via webhook:", error);
