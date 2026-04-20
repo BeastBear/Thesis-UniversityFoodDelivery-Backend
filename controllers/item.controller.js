@@ -36,38 +36,45 @@ export const addItem = async (req, res) => {
     // Use nameThai or nameEnglish as primary name if name is not provided
     const primaryName = name || nameThai || nameEnglish || "";
 
+    let parsedCategories = [];
+    if (categories) {
+      try {
+        parsedCategories =
+          typeof categories === "string" ? JSON.parse(categories) : categories;
+      } catch (e) {
+        parsedCategories = [];
+      }
+    }
+
     const itemData = {
       name: primaryName,
       nameThai: nameThai || "",
       nameEnglish: nameEnglish || "",
-      category:
-        category || (categories && categories.length > 0 ? categories[0] : ""),
+      category: category || "",
       foodType,
       price: price || onlinePrice || inStorePrice || 0,
       image,
       shop: shop._id,
+      categories: parsedCategories,
     };
 
-    if (onlinePrice) itemData.onlinePrice = parseFloat(onlinePrice);
-    if (inStorePrice) itemData.inStorePrice = parseFloat(inStorePrice);
-    if (categories) {
-      try {
-        const categoryIds =
-          typeof categories === "string" ? JSON.parse(categories) : categories;
-        itemData.categories = categoryIds;
-        // Set categoryRef to first category for backward compatibility
-        if (categoryIds.length > 0) {
-          itemData.categoryRef = categoryIds[0];
-          // Set category string to first category's name
-          const firstCategory = await Category.findById(categoryIds[0]);
+    if (parsedCategories.length > 0) {
+      itemData.categoryRef = parsedCategories[0];
+      // Set category string to first category's name for backward compatibility
+      // Make sure parsedCategories[0] is an ObjectId and not an object payload
+      const catId = parsedCategories[0]?._id || parsedCategories[0];
+      if (catId) {
+        try {
+          const firstCategory = await Category.findById(catId);
           if (firstCategory) {
             itemData.category = firstCategory.name;
           }
-        }
-      } catch (e) {
-        itemData.categories = [];
+        } catch (err) {}
       }
     }
+
+    if (onlinePrice) itemData.onlinePrice = parseFloat(onlinePrice);
+    if (inStorePrice) itemData.inStorePrice = parseFloat(inStorePrice);
     if (selectedOptionTemplates) {
       try {
         itemData.selectedOptionTemplates =
@@ -137,13 +144,25 @@ export const editItem = async (req, res) => {
 
     const primaryName = name || nameThai || nameEnglish || "";
 
+    let parsedCategories;
+    if (categories !== undefined) {
+      try {
+        parsedCategories =
+          typeof categories === "string" ? JSON.parse(categories) : categories;
+      } catch (e) {
+        parsedCategories = [];
+      }
+    }
+
     const updateData = {
       name: primaryName,
-      category:
-        category || (categories && categories.length > 0 ? categories[0] : ""),
       foodType,
       price: price || onlinePrice || inStorePrice || 0,
     };
+
+    if (category) {
+      updateData.category = category;
+    }
 
     if (nameThai !== undefined) updateData.nameThai = nameThai;
     if (nameEnglish !== undefined) updateData.nameEnglish = nameEnglish;
@@ -151,22 +170,21 @@ export const editItem = async (req, res) => {
       updateData.onlinePrice = onlinePrice ? parseFloat(onlinePrice) : null;
     if (inStorePrice !== undefined)
       updateData.inStorePrice = inStorePrice ? parseFloat(inStorePrice) : null;
-    if (categories !== undefined) {
-      try {
-        const categoryIds =
-          typeof categories === "string" ? JSON.parse(categories) : categories;
-        updateData.categories = categoryIds;
-        // Set categoryRef to first category for backward compatibility
-        if (categoryIds.length > 0) {
-          updateData.categoryRef = categoryIds[0];
-          // Set category string to first category's name
-          const firstCategory = await Category.findById(categoryIds[0]);
-          if (firstCategory) {
-            updateData.category = firstCategory.name;
-          }
+      
+    if (parsedCategories !== undefined) {
+      updateData.categories = parsedCategories;
+      // Set categoryRef to first category for backward compatibility
+      if (parsedCategories.length > 0) {
+        updateData.categoryRef = parsedCategories[0];
+        const catId = parsedCategories[0]?._id || parsedCategories[0];
+        if (catId) {
+          try {
+            const firstCategory = await Category.findById(catId);
+            if (firstCategory) {
+              updateData.category = firstCategory.name;
+            }
+          } catch (err) {}
         }
-      } catch (e) {
-        updateData.categories = [];
       }
     }
     if (selectedOptionTemplates !== undefined) {
