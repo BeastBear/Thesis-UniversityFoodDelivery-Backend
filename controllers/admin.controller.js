@@ -8,6 +8,8 @@ import Ticket from "../models/ticket.model.js";
 import stripe from "../config/stripe.js";
 
 import uploadOnCloudinary from "../utils/cloudinary.js";
+import * as turf from "@turf/turf";
+import Zone from "../models/zone.model.js";
 
 // Get Admin Stats
 export const getAdminStats = async (req, res) => {
@@ -198,7 +200,45 @@ export const updateSystemSettings = async (req, res) => {
 
     if (isSystemOpen !== undefined) settings.isSystemOpen = isSystemOpen;
     if (cafeteriaSettings !== undefined) {
-      settings.cafeteriaSettings = cafeteriaSettings;
+      // Process cafeteria settings to auto-calculate location from zone if it's missing or if zone changed
+      const processedCafeterias = await Promise.all(
+        cafeteriaSettings.map(async (cafe) => {
+          // If cafeteria has a zone but location is 0,0 - try to get zone center
+          if (
+            cafe.zoneId &&
+            (!cafe.location || (cafe.location.lat === 0 && cafe.location.lng === 0))
+          ) {
+            try {
+              const zone = await Zone.findById(cafe.zoneId);
+              if (zone) {
+                if (zone.type === "Point" && Array.isArray(zone.coordinates)) {
+                  cafe.location = {
+                    ...cafe.location,
+                    lat: zone.coordinates[1],
+                    lng: zone.coordinates[0],
+                  };
+                } else if (
+                  zone.type === "Polygon" &&
+                  Array.isArray(zone.coordinates)
+                ) {
+                  const polygon = turf.polygon(zone.coordinates);
+                  const centroid = turf.centroid(polygon);
+                  cafe.location = {
+                    ...cafe.location,
+                    lat: centroid.geometry.coordinates[1],
+                    lng: centroid.geometry.coordinates[0],
+                  };
+                }
+              }
+            } catch (err) {
+              console.error(`Error calculating centroid for cafe ${cafe.name}:`, err);
+            }
+          }
+          return cafe;
+        }),
+      );
+
+      settings.cafeteriaSettings = processedCafeterias;
       settings.markModified("cafeteriaSettings");
     }
     if (maintenanceMode !== undefined)
