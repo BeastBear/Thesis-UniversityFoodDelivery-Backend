@@ -2720,6 +2720,46 @@ export const handleStripeWebhook = async (req, res) => {
         metadata: paymentIntent.metadata,
       });
 
+      // Handle credit top-up PaymentIntent
+      if (paymentIntent.metadata?.type === "topup") {
+        try {
+          const User = (await import("../models/user.model.js")).default;
+          const userId = paymentIntent.metadata.userId;
+          const topUpAmount = parseFloat(paymentIntent.metadata.topUpAmount);
+
+          const user = await User.findById(userId);
+          if (user) {
+            if (user.processedTopUps && user.processedTopUps.includes(paymentIntent.id)) {
+              console.log("Top-up already processed via webhook:", paymentIntent.id);
+            } else {
+              user.jobCredit += topUpAmount;
+              if (!user.processedTopUps) user.processedTopUps = [];
+              user.processedTopUps.push(paymentIntent.id);
+              await user.save();
+
+              console.log("Credit top-up completed via webhook:", {
+                userId: userId,
+                paymentIntentId: paymentIntent.id,
+                topUpAmount: topUpAmount,
+                newCredit: user.jobCredit,
+              });
+
+              const io = req.app.get("io");
+              const socketMap = req.app.get("socketMap");
+              if (io) {
+                const userSocketId = socketMap?.get(userId?.toString()) || user?.socketId;
+                if (userSocketId) {
+                  io.to(userSocketId).emit("job-credit-updated", { jobCredit: user.jobCredit });
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error processing topup via webhook:", error);
+        }
+        break;
+      }
+
       // Update order status if needed
       try {
         // First try to find by stripePaymentId

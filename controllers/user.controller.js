@@ -449,7 +449,13 @@ export const chargeSavedCardTopUp = async (req, res) => {
     });
 
     if (paymentIntent.status === "succeeded") {
+      if (user.processedTopUps && user.processedTopUps.includes(paymentIntent.id)) {
+        return res.status(200).json({ status: "succeeded", newCredit: user.jobCredit });
+      }
       user.jobCredit += amount;
+      if (!user.processedTopUps) user.processedTopUps = [];
+      user.processedTopUps.push(paymentIntent.id);
+
       await user.save();
       return res.status(200).json({ status: "succeeded", newCredit: user.jobCredit });
     } else if (paymentIntent.status === "requires_action") {
@@ -470,6 +476,7 @@ export const chargeSavedCardTopUp = async (req, res) => {
 export const verifyCreditTopUp = async (req, res) => {
   try {
     const { sessionId, paymentIntentId } = req.body;
+    const paymentId = paymentIntentId || sessionId;
     let userId, amount;
 
     if (sessionId) {
@@ -494,7 +501,17 @@ export const verifyCreditTopUp = async (req, res) => {
         return res.status(404).json({ message: "User not found" });
       }
 
+      if (paymentId && user.processedTopUps && user.processedTopUps.includes(paymentId)) {
+        return res.status(200).json({ message: "Top up already verified", newCredit: user.jobCredit });
+      }
+
       user.jobCredit += amount;
+      
+      if (paymentId) {
+        if (!user.processedTopUps) user.processedTopUps = [];
+        user.processedTopUps.push(paymentId);
+      }
+
       await user.save();
 
       return res.status(200).json({ message: "Top up successful", newCredit: user.jobCredit });
