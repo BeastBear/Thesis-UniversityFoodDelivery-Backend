@@ -2000,7 +2000,7 @@ export const createPaymentIntent = async (req, res) => {
       // Enable saving payment method for future use
       // Note: 'setup_future_usage' is not compatible with all payment methods in checkout
       // For card, it works. For PromptPay, it might not be needed/supported in the same way.
-      if (paymentMethodTypes.includes("card")) {
+      if (paymentMethodTypes.length === 1 && paymentMethodTypes[0] === "card") {
         sessionConfig.payment_intent_data = {
           setup_future_usage: "on_session",
         };
