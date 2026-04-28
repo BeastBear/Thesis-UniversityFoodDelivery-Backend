@@ -1427,10 +1427,11 @@ export const confirmPickup = async (req, res) => {
         const netSubtotalAmount =
           Math.round(grossSubtotalAmount * (1 - gpRate) * 100) / 100;
 
-        // Deduct net subtotal from delivery boy's credit (this is the amount they pay the restaurant)
+        // Deduct gross subtotal from delivery boy's credit (because they collect the full cash amount from customer)
+        // The platform takes the full amount, then pays the net amount to the restaurant's wallet.
         const deliveryBoy = await User.findByIdAndUpdate(
           deliveryBoyId,
-          { $inc: { jobCredit: -netSubtotalAmount } },
+          { $inc: { jobCredit: -grossSubtotalAmount } },
           { new: true, session },
         );
 
@@ -1440,7 +1441,7 @@ export const confirmPickup = async (req, res) => {
             deliveryBoyId,
             grossSubtotalAmount,
             netSubtotalAmount,
-            previousCredit: (deliveryBoy.jobCredit || 0) + netSubtotalAmount,
+            previousCredit: (deliveryBoy.jobCredit || 0) + grossSubtotalAmount,
             newCredit: deliveryBoy.jobCredit,
           });
         } else {
